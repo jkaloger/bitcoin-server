@@ -11,8 +11,8 @@ CFLAGS =	-Wall -Wextra -std=gnu99 -g
 ## SRC = Source files.
 ## EXE = Executable name.
 
-SRC =		main.c sha256.c
-OBJ =		main.o sha256.o
+SRC =		main.c sha256.c server.c
+OBJ =		main.o sha256.o server.o
 EXE = 		server
 
 ## Top level target is executable.
@@ -30,4 +30,4 @@ clobber: clean
 		/bin/rm $(EXE) 
 
 ## Dependencies
-main.o: sha256.h uint256.h
+main.o: sha256.h uint256.h server.h
