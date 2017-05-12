@@ -8,6 +8,7 @@
 #include "sha256.h"
 #include "uint256.h"
 #include "server.h"
+#include <pthread.h>
 
 #define MAX_CLIENTS 100
 

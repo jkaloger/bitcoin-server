@@ -11,21 +11,21 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <pthread.h>
 
-void runServer(int portno)
-{
+void entry_point(void *arg);
+
+void runServer(int portno) {
 
     int sockfd, newsockfd, clilen;
-    char buffer[256];
     struct sockaddr_in serv_addr, cli_addr;
-    int n;
+    int n  = 0;
 
     /* Create TCP socket */
 
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-    if (sockfd < 0)
-    {
+    if (sockfd < 0) {
         perror("ERROR opening socket");
         exit(1);
     }
@@ -44,8 +44,7 @@ void runServer(int portno)
     /* Bind address to the socket */
 
     if (bind(sockfd, (struct sockaddr *) &serv_addr,
-             sizeof(serv_addr)) < 0)
-    {
+             sizeof(serv_addr)) < 0) {
         perror("ERROR on binding");
         exit(1);
     }
@@ -57,51 +56,80 @@ void runServer(int portno)
 
     clilen = sizeof(cli_addr);
 
-    // loop
-    while(1) {
-
-        /* Accept a connection - block until a connection is ready to
+    /* Accept a connection - block until a connection is ready to
          be accepted. Get back a new file descriptor to communicate on. */
-
-        newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
-                           &clilen);
-
-        if (newsockfd < 0) {
-            perror("ERROR on accept");
+    while(newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
+                       &clilen)) {
+        pthread_t tid;
+        if(pthread_create(&tid, NULL, entry_point, &newsockfd) != 0) {
+            printf("Error creating thread");
             exit(1);
         }
+    }
 
-        bzero(buffer, 256);
+    perror("ERROR on accept");
+    close(sockfd);
+    exit(1);
 
-        /* Read characters from the connection,
-            then process */
+}
 
-        n = read(newsockfd, buffer, 255);
+void printMalformedError(int fd)
+{
+    int n = write(fd, "ERRO\tmalformed header\r\n", 23);
+    if (n < 0) {
+        perror("ERROR writing to socket");
+        exit(1);
+    }
+}
 
-        if (n < 0) {
-            perror("ERROR reading from socket");
-            exit(1);
-        }
+void entry_point(void *arg)
+{
+    char buffer[256], header[6];
+    bzero(buffer, 256);
+    bzero(header, 6);
 
-        printf("Here is the message: %s\n", buffer);
+    // read counter
+    int n = 0;
+    int sockfd = *(int *)arg;
 
-        if(strncmp(buffer, "PING", 4) == 0)
-            n = write(newsockfd, "PONG\r\n", 6);
-        else if(strncmp(buffer, "PONG", 4) == 0)
-            n = write(newsockfd, "ERRO\t\tPONG strictly for server use\r\n", 42);
-        else
-            n = write(newsockfd, "MESSAGE RECEIVED\r\n", 18);
+    /* Read characters from the connection,
+        then process */
 
-        if (n < 0) {
-            perror("ERROR writing to socket");
-            exit(1);
-        }
+    n = read(sockfd, header, 6);
+    if (n < 0) {
+        perror("ERROR reading from socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
 
-        /* close socket */
-        close(newsockfd);
+
+    /* check the header is valid */
+    if (n < 6) {
+        printMalformedError(sockfd);
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+
+    /* parse the header */
+    if (strncmp(header, "PING\r\n", 6) == 0) {
+        n = write(sockfd, "PONG", 4);
+    } else if (strncmp(header, "PONG\r\n", 6) == 0) {
+        n = write(sockfd, "ERRO\tPONG strictly for server use\r\n", 35);
+    } else if (strncmp(header, "OKAY\r\n", 6) == 0) {
+        n = write(sockfd, "ERRO\tOKAY is not okay\r\n", 23);
+    } else {
+        n = write(sockfd, "ERRO\tInvalid server usage\r\n", 27);
+    }
+
+    if (n < 0) {
+        perror("ERROR writing to socket");
+        close(sockfd);
+        pthread_exit(NULL);
     }
 
     /* close socket */
     close(sockfd);
+
+    pthread_exit(NULL);
 
 }

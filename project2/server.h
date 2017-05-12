@@ -8,5 +8,6 @@
 #define SERVER_H
 
 void runServer(int portno);
+void printMalformedError(int fd);
 
 #endif
