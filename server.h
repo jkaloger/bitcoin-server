@@ -9,5 +9,11 @@
 
 void runServer(int portno);
 void printMalformedError(int fd);
+void entry_point(int *arg);
+void ping_handler(int sockfd);
+void pong_handler(int sockfd);
+void okay_handler(int sockfd);
+void soln_handler(int sockfd);
+void work_handler(int sockfd);
 
 #endif
