@@ -5,6 +5,8 @@
  */
 
 #include "server.h"
+#include "uint256.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,8 +14,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <stdint.h>
 
-void entry_point(void *arg);
 
 void runServer(int portno) {
 
@@ -62,7 +64,7 @@ void runServer(int portno) {
                        &clilen)) {
         pthread_t tid;
         if(pthread_create(&tid, NULL, entry_point, &newsockfd) != 0) {
-            printf("Error creating thread");
+            perror("ERROR creating thread");
             exit(1);
         }
     }
@@ -82,20 +84,19 @@ void printMalformedError(int fd)
     }
 }
 
-void entry_point(void *arg)
+void entry_point(int *arg)
 {
-    char buffer[256], header[6];
-    bzero(buffer, 256);
-    bzero(header, 6);
+    char header[4];
+    bzero(header, 4);
 
     // read counter
     int n = 0;
-    int sockfd = *(int *)arg;
+    int sockfd = *arg;
 
     /* Read characters from the connection,
         then process */
 
-    n = read(sockfd, header, 6);
+    n = read(sockfd, header, 4);
     if (n < 0) {
         perror("ERROR reading from socket");
         close(sockfd);
@@ -104,22 +105,25 @@ void entry_point(void *arg)
 
 
     /* check the header is valid */
-    if (n < 6) {
+    if (n < 4) {
         printMalformedError(sockfd);
         close(sockfd);
         pthread_exit(NULL);
     }
 
     /* parse the header */
-    if (strncmp(header, "PING\r\n", 6) == 0) {
-        n = write(sockfd, "PONG", 4);
-    } else if (strncmp(header, "PONG\r\n", 6) == 0) {
-        n = write(sockfd, "ERRO\tPONG strictly for server use\r\n", 35);
-    } else if (strncmp(header, "OKAY\r\n", 6) == 0) {
-        n = write(sockfd, "ERRO\tOKAY is not okay\r\n", 23);
-    } else {
+    if (strncmp(header, "PING", 4) == 0)
+        ping_handler(sockfd);
+    else if (strncmp(header, "PONG", 4) == 0)
+        pong_handler(sockfd);
+    else if (strncmp(header, "OKAY", 4) == 0)
+        okay_handler(sockfd);
+    else if (strncmp(header, "SOLN", 4) == 0)
+        soln_handler(sockfd);
+    else if (strncmp(header, "WORK", 4) == 0)
+        work_handler(sockfd);
+    else
         n = write(sockfd, "ERRO\tInvalid server usage\r\n", 27);
-    }
 
     if (n < 0) {
         perror("ERROR writing to socket");
@@ -131,5 +135,81 @@ void entry_point(void *arg)
     close(sockfd);
 
     pthread_exit(NULL);
+
+}
+
+void ping_handler(int sockfd)
+{
+    int n = write(sockfd, "PONG\r\n", 6);
+    if(n < 4) {
+        perror("ERROR writing to socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+}
+void pong_handler(int sockfd)
+{
+    int n = write(sockfd, "ERRO\tPONG strictly for server use\r\n", 35);
+    if(n < 35) {
+        perror("ERROR writing to socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+}
+void okay_handler(int sockfd)
+{
+    int n = write(sockfd, "ERRO\tOKAY is not okay\r\n", 23);
+    if(n < 23) {
+        perror("ERROR writing to socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+}
+void soln_handler(int sockfd)
+{
+    /* counting vars, storage vars */
+    int n;
+    BYTE empty[1];
+    BYTE diff_stream[8];
+    uint32_t difficulty = 0;
+    BYTE seed[64];
+    BYTE soln_stream[16];
+    uint64_t solution;
+
+    /* skip space */
+    read(sockfd, empty, 1);
+
+    /* read in difficulty */
+    bzero(diff_stream, 8);
+    n = read(sockfd, &diff_stream, 8);
+    if (n < 0) {
+        perror("ERROR reading from socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+    difficulty = strtoul(diff_stream, NULL, 16);
+
+    /* skip space */
+    read(sockfd, empty, 1);
+
+    /* read in seed */
+    n = read(sockfd, seed, 64);
+
+    /* skip space */
+    read(sockfd, empty, 1);
+
+    /* read in solution */
+    bzero(soln_stream, 16);
+    n = read(sockfd, soln_stream, 16);
+    if (n < 0) {
+        perror("ERROR reading from socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+    solution = strtoull(soln_stream, NULL, 16);
+    printf("SOLN: %llu", solution);
+}
+void work_handler(int sockfd)
+{
 
 }
