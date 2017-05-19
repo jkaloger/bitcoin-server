@@ -16,7 +16,6 @@
 #include <pthread.h>
 #include <stdint.h>
 
-
 void runServer(int portno) {
 
     int sockfd, newsockfd, clilen;
@@ -67,6 +66,11 @@ void runServer(int portno) {
             perror("ERROR creating thread");
             exit(1);
         }
+
+        pthread_join(tid, NULL);
+        close(newsockfd);
+        close(sockfd);
+        exit(0);
     }
 
     perror("ERROR on accept");
@@ -167,40 +171,35 @@ void okay_handler(int sockfd)
 }
 void soln_handler(int sockfd)
 {
-    /* counting vars, storage vars */
+    /* counting vars */
     int n;
-    BYTE empty[1];
-    BYTE diff_stream[8];
-    uint32_t difficulty = 0;
-    BYTE seed[64];
-    BYTE soln_stream[16];
+
+    /* parsing vars */
+    BYTE diff_stream[10]; // 8 byte hex + 2 whitespace padding
+    uint32_t difficulty;
+
+    BYTE seed[64]; // 64 byte seed
+
+    BYTE soln_stream[18]; // 16 byte hex + 2 whitespace padding
     uint64_t solution;
 
-    /* skip space */
-    read(sockfd, empty, 1);
-
     /* read in difficulty */
-    bzero(diff_stream, 8);
-    n = read(sockfd, &diff_stream, 8);
+    bzero(diff_stream, 10);
+    n = read(sockfd, &diff_stream, 10); // read in the hex string padded by a space on either side
     if (n < 0) {
         perror("ERROR reading from socket");
         close(sockfd);
         pthread_exit(NULL);
     }
-    difficulty = strtoul(diff_stream, NULL, 16);
 
-    /* skip space */
-    read(sockfd, empty, 1);
+    difficulty = (uint32_t)strtoul(diff_stream, NULL, 16); // hex2uint32 (network order)
 
     /* read in seed */
-    n = read(sockfd, seed, 64);
-
-    /* skip space */
-    read(sockfd, empty, 1);
+    n = read(sockfd, seed, 64); // read in our seed
 
     /* read in solution */
-    bzero(soln_stream, 16);
-    n = read(sockfd, soln_stream, 16);
+    bzero(soln_stream, 17);
+    n = read(sockfd, soln_stream, 17); // read in the hex string padded by a space at index 0
     if (n < 0) {
         perror("ERROR reading from socket");
         close(sockfd);
@@ -208,6 +207,8 @@ void soln_handler(int sockfd)
     }
     solution = strtoull(soln_stream, NULL, 16);
     printf("SOLN: %llu", solution);
+
+    close(sockfd);
 }
 void work_handler(int sockfd)
 {
