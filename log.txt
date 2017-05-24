@@ -1,2 +1,2 @@
-2017-05-24 20:59:52,0.0.0.0,5,PONG
-2017-05-24 20:59:54,0.0.0.0,5,ERROR PONG strictly for server use            
+2017-05-24 22:19:12,127.0.0.1,5,PONG
+2017-05-24 22:19:13,93.227.93.161,0,ERRO PONG strictly for server use            

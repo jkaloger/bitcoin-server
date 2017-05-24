@@ -125,16 +125,23 @@ void entry_point(int *arg) {
         pthread_exit(NULL);
     }
 
+    /* TODO : PARSE FULL MESSAGE BEFORE SENDING -- ADDING TO LOG */
+
     /* parse the header */
     if (strncmp(header, "PING", 4) == 0) {
+        server_log(sockfd, "PING\r\n");
         ping_handler(sockfd);
     } else if (strncmp(header, "PONG", 4) == 0) {
+        server_log(sockfd, "PONG\r\n");
         pong_handler(sockfd);
     } else if (strncmp(header, "OKAY", 4) == 0) {
+        server_log(sockfd, "OKAY\r\n");
         okay_handler(sockfd);
     } else if (strncmp(header, "SOLN", 4) == 0) {
+        server_log(sockfd, "SOLN\r\n");
         soln_handler(sockfd);
     } else if (strncmp(header, "WORK", 4) == 0) {
+        server_log(sockfd, "WORK\r\n");
         work_handler(sockfd);
     }
     else
@@ -391,15 +398,15 @@ void line_end_check(int sockfd)
 
 void write_error(int sockfd, char *str)
 {
-    char err[49];
-    sprintf(&err, "ERROR %-40s\r\n", str);
-    int n = write(sockfd, err, 49);
-    if(n < 49) {
+    char err[48];
+    sprintf(&err, "ERRO %-40s\r\n", str);
+    int n = write(sockfd, err, 48);
+    if(n < 48) {
         perror("ERROR writing to socket");
         close(sockfd);
         pthread_exit(NULL);
     }
-    server_log(sockfd, err);
+    server_log(0, err);
 }
 
 void server_log(int sockfd, char *exchange)
@@ -412,11 +419,7 @@ void server_log(int sockfd, char *exchange)
     char time[20];
     strftime(time, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
     char *ip = inet_ntoa(addr.sin_addr);
-    if(strncmp(ip, "127.0.0.1", 9) == 0) {
-        sprintf(&msg, "%s,%s,%d,%s", time, "0.0.0.0", sockfd, exchange);
-    } else {
-        sprintf(&msg, "%s,%s,%d,%s", time, inet_ntoa(addr.sin_addr), sockfd, exchange);
-    }
+    sprintf(&msg, "%s,%s,%d,%s", time, inet_ntoa(addr.sin_addr), sockfd, exchange);
     fprintf(log_file, "%s", msg);
     fflush(log_file);
 }
