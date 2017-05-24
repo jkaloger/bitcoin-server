@@ -8,6 +8,7 @@
 #define SERVER_H
 
 void runServer(int portno);
+void server_loop(int sockfd);
 void printMalformedError(int fd);
 void entry_point(int *arg);
 void ping_handler(int sockfd);
@@ -15,5 +16,8 @@ void pong_handler(int sockfd);
 void okay_handler(int sockfd);
 void soln_handler(int sockfd);
 void work_handler(int sockfd);
+void line_end_check(int sockfd);
+void write_error(int sockfd, char *str);
+void server_log(int sockfd, char *exchange);
 
 #endif

@@ -17,12 +17,19 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <time.h>
+
+/* SHARED BETWEEN THREADS */
+// global work queue
+Queue work_queue;
+
+// log file
+FILE *log_file;
 
 /* Start Server */
 void runServer(int portno) {
-
-    int sockfd, newsockfd, clilen;
-    struct sockaddr_in serv_addr, cli_addr;
+    int sockfd;
+    struct sockaddr_in serv_addr;
     int n  = 0;
 
     /* Create TCP socket */
@@ -58,37 +65,41 @@ void runServer(int portno) {
 
     listen(sockfd, 5);
 
-    clilen = sizeof(cli_addr);
+    server_loop(sockfd);
 
-    /* Accept a connection - block until a connection is ready to
-         be accepted. Get back a new file descriptor to communicate on. */
+    perror("ERROR unknown error caused server to stop");
+    close(sockfd);
+    exit(1);
+
+}
+
+void server_loop(int sockfd)
+{
+    struct sockaddr_in cli_addr;
+    int clilen = sizeof(cli_addr);
+    int newsockfd;
+
+    /* Log file */
+    log_file = fopen("./log.txt",  "w");
+
+    /* Accept a connection. Get back a new file descriptor to communicate on. */
     while(newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
-                       &clilen)) {
+                             &clilen)) {
         pthread_t tid;
         if(pthread_create(&tid, NULL, entry_point, &newsockfd) != 0) {
             perror("ERROR creating thread");
             exit(1);
         }
     }
-
-    perror("ERROR on accept");
-    close(sockfd);
-    exit(1);
-
 }
 
-void printMalformedError(int fd)
+void printMalformedError(int sockfd)
 {
-    int n = write(fd, "ERRO\tmalformed header\r\n", 23);
-    if (n < 0) {
-        perror("ERROR writing to socket");
-        exit(1);
-    }
+    write_error(sockfd, "Malformed header");
 }
 
 /* Thread Entry */
-void entry_point(int *arg)
-{
+void entry_point(int *arg) {
     char header[4];
     bzero(header, 4);
 
@@ -115,16 +126,17 @@ void entry_point(int *arg)
     }
 
     /* parse the header */
-    if (strncmp(header, "PING", 4) == 0)
+    if (strncmp(header, "PING", 4) == 0) {
         ping_handler(sockfd);
-    else if (strncmp(header, "PONG", 4) == 0)
+    } else if (strncmp(header, "PONG", 4) == 0) {
         pong_handler(sockfd);
-    else if (strncmp(header, "OKAY", 4) == 0)
+    } else if (strncmp(header, "OKAY", 4) == 0) {
         okay_handler(sockfd);
-    else if (strncmp(header, "SOLN", 4) == 0)
+    } else if (strncmp(header, "SOLN", 4) == 0) {
         soln_handler(sockfd);
-    else if (strncmp(header, "WORK", 4) == 0)
+    } else if (strncmp(header, "WORK", 4) == 0) {
         work_handler(sockfd);
+    }
     else
         n = write(sockfd, "ERRO\tInvalid server usage\r\n", 27);
 
@@ -134,9 +146,7 @@ void entry_point(int *arg)
         pthread_exit(NULL);
     }
 
-    /* close socket */
     close(sockfd);
-
     pthread_exit(NULL);
 
 }
@@ -144,7 +154,9 @@ void entry_point(int *arg)
 /* PING message handler */
 void ping_handler(int sockfd)
 {
-    int n = write(sockfd, "PONG\r\n", 40);
+    line_end_check(sockfd);
+    int n;
+    n = write(sockfd, "PONG\r\n", 6);
     if(n < 4) {
         perror("ERROR writing to socket");
         close(sockfd);
@@ -155,23 +167,15 @@ void ping_handler(int sockfd)
 /* PONG message handler */
 void pong_handler(int sockfd)
 {
-    int n = write(sockfd, "ERRO\tPONG strictly for server use     \r\n", 40);
-    if(n < 35) {
-        perror("ERROR writing to socket");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
+    line_end_check(sockfd);
+    write_error(sockfd, "PONG strictly for server use");
 }
 
 /* OKAY message handler */
 void okay_handler(int sockfd)
 {
-    int n = write(sockfd, "ERRO\tOKAY is not okay                 \r\n", 40);
-    if(n < 23) {
-        perror("ERROR writing to socket");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
+    line_end_check(sockfd);
+    write_error(sockfd, "OKAY is not okay");
 }
 
 /* SOLN message handler */
@@ -243,6 +247,8 @@ void soln_handler(int sockfd)
 
     solution = strtoull(soln_stream, NULL, 16);
 
+    line_end_check(sockfd);
+
     bzero(concat, 40);
     // concatenate seed and solution
     memcpy(concat, seed, 32);
@@ -276,16 +282,7 @@ void soln_handler(int sockfd)
             pthread_exit(NULL);
         }
     } else {
-        n = write(sockfd, "ERRO\tInvalid proof of work            \r\n", 44);
-        if(n < 0) {
-            perror("ERROR writing to socket");
-            close(sockfd);
-            pthread_exit(NULL);
-        } else if(n < 44) {
-            perror("ERROR write error");
-            close(sockfd);
-            pthread_exit(NULL);
-        }
+        write_error(sockfd, "Invalid proof of work");
     }
 
     close(sockfd);
@@ -376,4 +373,40 @@ void work_handler(int sockfd)
     worker_count = strtoul(worker_stream, NULL, 16);
 
     int a;
+}
+
+void line_end_check(int sockfd)
+{
+    int n;
+    BYTE final[2];
+    n = read(sockfd, &final,2);
+    if(n < 2 || strncmp(final, "\r\n", 2) != 0) {
+        write_error(sockfd, "invalid line endings");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+}
+
+void write_error(int sockfd, char *str)
+{
+    char err[49];
+    sprintf(&err, "ERROR %-40s\r\n", "invalid line endings");
+    int n = write(sockfd, err, 49);
+    if(n < 49) {
+
+    }
+    server_log(sockfd, err);
+}
+
+void server_log(int sockfd, char *exchange)
+{
+    struct sockaddr_in addr;
+    socklen_t addr_size = sizeof(struct sockaddr_in);
+    getpeername(sockfd, (struct sockaddr *)&addr, &addr_size);
+    char msg[1024];
+    time_t now = time(0);
+    inet_ntoa(addr.sin_addr);
+    sprintf(&msg, "%ld,%lu,%d,%s", now, inet_ntoa(addr.sin_addr), sockfd, exchange);
+    fprintf(log_file, "%s", msg);
+    fflush(log_file);
 }
