@@ -411,15 +411,23 @@ void write_error(int sockfd, char *str)
 
 void server_log(int sockfd, char *exchange)
 {
-    struct sockaddr_in addr;
-    socklen_t addr_size = sizeof(struct sockaddr_in);
-    getpeername(sockfd, (struct sockaddr *)&addr, &addr_size);
     char msg[1024];
     time_t now = time(0);
     char time[20];
     strftime(time, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
-    char *ip = inet_ntoa(addr.sin_addr);
+
+    // get ip addr
+    if(sockfd == -1) {
+        char *ip = "0.0.0.0";
+    } else {
+        struct sockaddr_in addr;
+        socklen_t addr_size = sizeof(struct sockaddr_in);
+        getpeername(sockfd, (struct sockaddr *) &addr, &addr_size);
+        char *ip = inet_ntoa(addr.sin_addr);
+    }
+
+    // generate/write message
     sprintf(&msg, "%s,%s,%d,%s", time, inet_ntoa(addr.sin_addr), sockfd, exchange);
     fprintf(log_file, "%s", msg);
-    fflush(log_file);
+    fflush(log_file); // force write to file
 }
