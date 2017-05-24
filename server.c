@@ -5,6 +5,7 @@
  */
 
 #include "server.h"
+#include "queue.h"
 #include "uint256.h"
 #include "sha256.h"
 
@@ -184,7 +185,7 @@ void soln_handler(int sockfd)
     uint32_t difficulty;
 
     BYTE seed_stream[65]; // 64 byte seed with null byte end
-    BYTE seed[33];
+    BYTE seed[32];
 
     BYTE soln_stream[18]; // 16 byte hex + 2 whitespace padding
     uint64_t solution;
@@ -215,15 +216,16 @@ void soln_handler(int sockfd)
 
     }
 
-    // convert hex string to hex values (64 byte character array to 32 byte hex)
+    // convert hex string to hex values (64 byte character array to 32 byte hex/uint256)
     BYTE *current = seed_stream;
-    bzero(seed, 33);
+    bzero(seed, 32);
     for(int i = 0 ; i < 32 ; i++) {
         BYTE tmp[3]; // tmp var to store hex chars
         bzero(tmp, 3);
         sprintf(tmp, "%c%c", current[0], current[1]); // load hex chars into tmp var
         uint8_t hex = strtol(tmp, NULL, 16);
-        current += 2;
+        seed[i] = hex;
+        current += 2 * sizeof(BYTE);
     }
 
     /* read in solution */
@@ -244,7 +246,7 @@ void soln_handler(int sockfd)
     bzero(concat, 40);
     // concatenate seed and solution
     memcpy(concat, seed, 32);
-    memcpy(concat+32, &solution, 8);
+    memcpy(concat+(32 * sizeof(BYTE)), &solution, 8);
 
     /* crypto vars */
     SHA256_CTX ctx; // md5 structure that holds hash-related data
@@ -292,5 +294,86 @@ void soln_handler(int sockfd)
 /* WORK message handler */
 void work_handler(int sockfd)
 {
+    /* counting vars */
+    int n;
 
+    /* parsing vars */
+    BYTE diff_stream[10]; // 8 byte hex + 2 whitespace padding
+    uint32_t difficulty;
+
+    BYTE seed_stream[65]; // 64 byte seed with null byte end
+    BYTE seed[32];
+
+    BYTE start_stream[18]; // 16 byte hex + 2 whitespace padding
+    uint64_t start;
+
+    BYTE worker_stream[3];
+    uint8_t worker_count;
+
+    /* read in difficulty */
+    bzero(diff_stream, 10);
+    n = read(sockfd, &diff_stream, 10); // read in the hex string padded by a space on either side
+    if (n < 0) {
+        perror("ERROR reading from socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    } else if(n < 10) {
+        perror("ERROR malformed message contents");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+
+    difficulty = (uint32_t)strtoul(diff_stream, NULL, 16); // hex2uint32
+
+    /* read in seed */
+    bzero(seed_stream, 65); // \0 will be written to the end
+    n = read(sockfd, seed_stream, 64); // read in our seed
+    if(n < 0) {
+
+    } else if(n < 64) {
+
+    }
+
+    // convert hex string to hex values (64 byte character array to 32 byte hex/uint256)
+    BYTE *current = seed_stream;
+    bzero(seed, 32);
+    for(int i = 0 ; i < 32 ; i++) {
+        BYTE tmp[3]; // tmp var to store hex chars
+        bzero(tmp, 3);
+        sprintf(tmp, "%c%c", current[0], current[1]); // load hex chars into tmp var
+        uint8_t hex = strtol(tmp, NULL, 16);
+        seed[i] = hex;
+        current += 2 * sizeof(BYTE);
+    }
+
+    /* read in solution */
+    bzero(start_stream, 18);
+    n = read(sockfd, start_stream, 18); // read in the hex string padded by spaces
+    if (n < 0) {
+        perror("ERROR reading from socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    } else if(n < 18) {
+        perror("ERROR malformed message contents");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+
+    start = strtoull(start_stream, NULL, 16);
+
+    bzero(worker_stream, 3);
+    n = read(sockfd, &worker_stream, 2); // read in the hex string padded by a space on either side
+    if (n < 0) {
+        perror("ERROR reading from socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    } else if(n < 2) {
+        perror("ERROR malformed message contents");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+
+    worker_count = strtoul(worker_stream, NULL, 16);
+
+    int a;
 }
