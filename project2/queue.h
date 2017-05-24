@@ -7,7 +7,13 @@
 
 #include <stdint.h>
 
+#ifndef BYTE_TYPEDEF
+
+#define BYTE_TYPEDEF
+
 typedef unsigned char BYTE;
+
+#endif
 typedef struct queue_t *Queue;
 
 struct queue_t {
