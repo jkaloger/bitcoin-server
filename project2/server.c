@@ -155,13 +155,15 @@ void entry_point(int *arg) {
 void ping_handler(int sockfd)
 {
     line_end_check(sockfd);
+    char *pong = "PONG\r\n";
     int n;
-    n = write(sockfd, "PONG\r\n", 6);
-    if(n < 4) {
+    n = write(sockfd, pong, 6);
+    if(n < 6) {
         perror("ERROR writing to socket");
         close(sockfd);
         pthread_exit(NULL);
     }
+    server_log(sockfd, pong);
 }
 
 /* PONG message handler */
@@ -204,7 +206,7 @@ void soln_handler(int sockfd)
         close(sockfd);
         pthread_exit(NULL);
     } else if(n < 10) {
-        perror("ERROR malformed message contents");
+        write_error(sockfd, "malformed difficulty");
         close(sockfd);
         pthread_exit(NULL);
     }
@@ -240,9 +242,7 @@ void soln_handler(int sockfd)
         close(sockfd);
         pthread_exit(NULL);
     } else if(n < 17) {
-        perror("ERROR malformed message contents");
-        close(sockfd);
-        pthread_exit(NULL);
+        write_error(sockfd, "malformed solution");
     }
 
     solution = strtoull(soln_stream, NULL, 16);
@@ -271,7 +271,9 @@ void soln_handler(int sockfd)
     uint32_t target = b * 2^(8*(a-3));
 
     if(y < target) {
-        n = write(sockfd, "OKAY\r\n", 6);
+        char *msg = "OKAY\r\n";
+        n = write(sockfd, msg, 6);
+        server_log(sockfd, msg);
         if(n < 0) {
             perror("ERROR writing to socket");
             close(sockfd);
@@ -390,10 +392,12 @@ void line_end_check(int sockfd)
 void write_error(int sockfd, char *str)
 {
     char err[49];
-    sprintf(&err, "ERROR %-40s\r\n", "invalid line endings");
+    sprintf(&err, "ERROR %-40s\r\n", str);
     int n = write(sockfd, err, 49);
     if(n < 49) {
-
+        perror("ERROR writing to socket");
+        close(sockfd);
+        pthread_exit(NULL);
     }
     server_log(sockfd, err);
 }
@@ -405,8 +409,14 @@ void server_log(int sockfd, char *exchange)
     getpeername(sockfd, (struct sockaddr *)&addr, &addr_size);
     char msg[1024];
     time_t now = time(0);
-    inet_ntoa(addr.sin_addr);
-    sprintf(&msg, "%ld,%lu,%d,%s", now, inet_ntoa(addr.sin_addr), sockfd, exchange);
+    char time[20];
+    strftime(time, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
+    char *ip = inet_ntoa(addr.sin_addr);
+    if(strncmp(ip, "127.0.0.1", 9) == 0) {
+        sprintf(&msg, "%s,%s,%d,%s", time, "0.0.0.0", sockfd, exchange);
+    } else {
+        sprintf(&msg, "%s,%s,%d,%s", time, inet_ntoa(addr.sin_addr), sockfd, exchange);
+    }
     fprintf(log_file, "%s", msg);
     fflush(log_file);
 }
