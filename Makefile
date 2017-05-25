@@ -4,7 +4,7 @@
 ## CC  = Compiler.
 ## CFLAGS = Compiler flags.
 CC	= gcc
-CFLAGS =	-Wall -Wextra -pedantic -std=c99 -g
+CFLAGS =	-Wall -Wextra -pedantic -std=c99 -g -lpthread
 
 
 ## OBJ = Object files.
