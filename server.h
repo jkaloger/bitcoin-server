@@ -15,9 +15,11 @@ typedef unsigned char BYTE;
 
 #endif
 
-void runServer(int portno);
+void run_server(int portno);
 void server_loop(int sockfd);
 void printMalformedError(int fd);
+void connection_entry(void *arg);
+void process(int sockfd, char *buff);
 void entry_point(void *arg);
 void ping_handler(int sockfd);
 void pong_handler(int sockfd);

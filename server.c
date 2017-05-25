@@ -29,7 +29,7 @@ Queue work_queue;
 FILE *log_file;
 
 /* Start Server */
-void runServer(int portno) {
+void run_server(int portno) {
     int sockfd;
     struct sockaddr_in serv_addr;
 
@@ -86,9 +86,9 @@ void server_loop(int sockfd)
     /* Accept a connection. Get back a new file descriptor to communicate on. */
     while((newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
                               &clilen))) {
-        // create new thread and pass the file descriptor
+        // we have our connection, pass the descriptor to a new thread, and return to accepting connections
         pthread_t tid;
-        if(pthread_create(&tid, NULL, entry_point, &newsockfd) != 0) {
+        if(pthread_create(&tid, NULL, connection_entry, &newsockfd) != 0) {
             perror("ERROR creating thread");
             exit(1);
         }
@@ -100,7 +100,54 @@ void printMalformedError(int sockfd)
     write_error(sockfd, "Malformed header");
 }
 
-/* Thread Entry */
+void connection_entry(void *arg)
+{
+
+    int used = 0;
+    char *buff = malloc(sizeof(char) * 1024);
+    bzero(buff, 1024);
+    int sockfd = *(int *)arg;
+    server_log(sockfd, "Connection Established\r\n", 1);
+    int n;
+    while((n = read(sockfd, &buff[used], 1024 - used)) > 0) { // while connection is active
+        used += n;
+        char *end;
+        while((end = strnstr(buff, "\r\n", used))) {
+            int len = (end - buff);
+            char *line = malloc(sizeof(char) * len);
+            memcpy(line, buff, len);
+            process(sockfd, line);
+            used -= len + 2;
+            memmove(buff, end + 2, used);
+        }
+
+    }
+    server_log(sockfd, "Connection Terminated\r\n", 1);
+}
+
+void process(int sockfd, char *buff) {
+/* parse the header */
+    if (strncmp(buff, "PING", 4) == 0) {
+        server_log(sockfd, buff, 0);
+        ping_handler(sockfd);
+    } else if (strncmp(buff, "PONG", 4) == 0) {
+        server_log(sockfd, buff, 0);
+        pong_handler(sockfd);
+    } else if (strncmp(buff, "OKAY", 4) == 0) {
+        server_log(sockfd, buff, 0);
+        okay_handler(sockfd);
+    } else if (strncmp(buff, "SOLN", 4) == 0) {
+        server_log(sockfd, buff, 0);
+        soln_handler(sockfd);
+    } else if (strncmp(buff, "WORK", 4) == 0) {
+        server_log(sockfd, buff, 0);
+        work_handler(sockfd);
+    } else {
+        write_error(sockfd, "Invalid server usage");
+    }
+}
+
+/* Thread Entry (OLD) */
 void entry_point(void *arg) {
     pthread_detach(pthread_self());
     char header[4];
@@ -155,31 +202,23 @@ void entry_point(void *arg) {
         close(sockfd);
         pthread_exit(NULL);
     }
-
-    close(sockfd);
-    pthread_exit(NULL);
-
 }
 
 /* PING message handler */
 void ping_handler(int sockfd)
 {
-    line_end_check(sockfd);
-    char *pong = "PONG\r\n";
-    write_msg(sockfd, pong, 6);
+    write_msg(sockfd, "PONG\r\n", 6);
 }
 
 /* PONG message handler */
 void pong_handler(int sockfd)
 {
-    line_end_check(sockfd);
     write_error(sockfd, "PONG strictly for server use");
 }
 
 /* OKAY message handler */
 void okay_handler(int sockfd)
 {
-    line_end_check(sockfd);
     write_error(sockfd, "OKAY is not okay");
 }
 
@@ -227,15 +266,11 @@ void soln_handler(int sockfd)
         write_error(sockfd, "malformed solution");
     }
 
-    line_end_check(sockfd);
-
     if(check_proof(diff_stream, seed_stream, soln_stream) < 0) {
         write_msg(sockfd, "OKAY\r\n", 6);
     } else {
         write_error(sockfd, "invalid proof of work");
     }
-
-    close(sockfd);
 }
 
 /* WORK message handler */
@@ -324,19 +359,6 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
 
     return result;
 
-}
-
-void line_end_check(int sockfd)
-{
-    int n;
-    BYTE final[2];
-    n = read(sockfd, &final,2);
-    /* TODO: FIX THIS */
-    if(n < 2 || strncmp((const char *)final, "\r\n", 2) != 0) {
-        write_error(sockfd, "invalid line endings");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
 }
 
 void write_error(int sockfd, char *str)
