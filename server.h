@@ -7,6 +7,14 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#ifndef BYTE_TYPEDEF
+
+#define BYTE_TYPEDEF
+
+typedef unsigned char BYTE;
+
+#endif
+
 void runServer(int portno);
 void server_loop(int sockfd);
 void printMalformedError(int fd);
@@ -19,5 +27,5 @@ void work_handler(int sockfd);
 void line_end_check(int sockfd);
 void write_error(int sockfd, char *str);
 void server_log(int sockfd, char *exchange, int is_server);
-
+BYTE *hex2int(int num_bytes, char *bytestream);
 #endif
