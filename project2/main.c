@@ -21,6 +21,6 @@ main(int argc, char **argv)
         exit(1);
     }
 
-    runServer(atoi(argv[1]));
+    run_server(atoi(argv[1]));
     return 0;
 }
