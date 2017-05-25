@@ -14,14 +14,19 @@
 typedef unsigned char BYTE;
 
 #endif
+typedef struct work_t *Work;
 typedef struct queue_t *Queue;
 
 struct queue_t {
+    Work work;
+    Queue next;
+};
+
+struct work_t {
     uint32_t difficulty;
     BYTE seed[64];
     uint64_t start;
     uint8_t worker_count;
-    Queue next;
 };
 
 void enqueue(Queue *q, uint32_t diff, BYTE seed[64], uint64_t start, uint8_t worker_count);

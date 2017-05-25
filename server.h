@@ -18,6 +18,6 @@ void soln_handler(int sockfd);
 void work_handler(int sockfd);
 void line_end_check(int sockfd);
 void write_error(int sockfd, char *str);
-void server_log(int sockfd, char *exchange);
+void server_log(int sockfd, char *exchange, int is_server);
 
 #endif

@@ -100,6 +100,7 @@ void printMalformedError(int sockfd)
 
 /* Thread Entry */
 void entry_point(int *arg) {
+    pthread_detach(pthread_self());
     char header[4];
     bzero(header, 4);
 
@@ -129,19 +130,19 @@ void entry_point(int *arg) {
 
     /* parse the header */
     if (strncmp(header, "PING", 4) == 0) {
-        server_log(sockfd, "PING\r\n");
+        server_log(sockfd, "PING\r\n", 0);
         ping_handler(sockfd);
     } else if (strncmp(header, "PONG", 4) == 0) {
-        server_log(sockfd, "PONG\r\n");
+        server_log(sockfd, "PONG\r\n", 0);
         pong_handler(sockfd);
     } else if (strncmp(header, "OKAY", 4) == 0) {
-        server_log(sockfd, "OKAY\r\n");
+        server_log(sockfd, "OKAY\r\n", 0);
         okay_handler(sockfd);
     } else if (strncmp(header, "SOLN", 4) == 0) {
-        server_log(sockfd, "SOLN\r\n");
+        server_log(sockfd, "SOLN\r\n", 0);
         soln_handler(sockfd);
     } else if (strncmp(header, "WORK", 4) == 0) {
-        server_log(sockfd, "WORK\r\n");
+        server_log(sockfd, "WORK\r\n", 0);
         work_handler(sockfd);
     }
     else
@@ -170,7 +171,7 @@ void ping_handler(int sockfd)
         close(sockfd);
         pthread_exit(NULL);
     }
-    server_log(sockfd, pong);
+    server_log(sockfd, pong, 1);
 }
 
 /* PONG message handler */
@@ -201,7 +202,7 @@ void soln_handler(int sockfd)
     BYTE seed[32];
 
     BYTE soln_stream[18]; // 16 byte hex + 2 whitespace padding
-    uint64_t solution;
+    BYTE solution[16];
 
     BYTE concat[40];
 
@@ -252,14 +253,23 @@ void soln_handler(int sockfd)
         write_error(sockfd, "malformed solution");
     }
 
-    solution = strtoull(soln_stream, NULL, 16);
+    BYTE *current = seed_stream + sizeof(BYTE);
+    bzero(solution, 16);
+    for(int i = 0 ; i < 32 ; i++) {
+        BYTE tmp[3]; // tmp var to store hex chars
+        bzero(tmp, 3);
+        sprintf(tmp, "%c%c", current[0], current[1]); // load hex chars into tmp var
+        uint8_t hex = strtol(tmp, NULL, 16);
+        seed[i] = hex;
+        current += 2 * sizeof(BYTE);
+    }
 
     line_end_check(sockfd);
 
     bzero(concat, 40);
     // concatenate seed and solution
     memcpy(concat, seed, 32);
-    memcpy(concat+(32 * sizeof(BYTE)), &solution, 8);
+    memcpy(concat+(32 * sizeof(BYTE)), solution, 8);
 
     /* crypto vars */
     SHA256_CTX ctx; // md5 structure that holds hash-related data
@@ -280,7 +290,7 @@ void soln_handler(int sockfd)
     if(y < target) {
         char *msg = "OKAY\r\n";
         n = write(sockfd, msg, 6);
-        server_log(sockfd, msg);
+        server_log(sockfd, msg, 0);
         if(n < 0) {
             perror("ERROR writing to socket");
             close(sockfd);
@@ -389,6 +399,7 @@ void line_end_check(int sockfd)
     int n;
     BYTE final[2];
     n = read(sockfd, &final,2);
+    /* TODO: FIX THIS */
     if(n < 2 || strncmp(final, "\r\n", 2) != 0) {
         write_error(sockfd, "invalid line endings");
         close(sockfd);
@@ -406,10 +417,10 @@ void write_error(int sockfd, char *str)
         close(sockfd);
         pthread_exit(NULL);
     }
-    server_log(0, err);
+    server_log(sockfd, err, 1);
 }
 
-void server_log(int sockfd, char *exchange)
+void server_log(int sockfd, char *exchange, int is_server)
 {
     char msg[1024];
     time_t now = time(0);
@@ -417,17 +428,18 @@ void server_log(int sockfd, char *exchange)
     strftime(time, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
 
     // get ip addr
-    if(sockfd == -1) {
-        char *ip = "0.0.0.0";
+    char *ip;
+    if(is_server) {
+        ip = "0.0.0.0";
     } else {
         struct sockaddr_in addr;
         socklen_t addr_size = sizeof(struct sockaddr_in);
         getpeername(sockfd, (struct sockaddr *) &addr, &addr_size);
-        char *ip = inet_ntoa(addr.sin_addr);
+        ip = inet_ntoa(addr.sin_addr);
     }
 
     // generate/write message
-    sprintf(&msg, "%s,%s,%d,%s", time, inet_ntoa(addr.sin_addr), sockfd, exchange);
+    sprintf(&msg, "[%s] %02d %-16s %s", time, sockfd, ip, exchange);
     fprintf(log_file, "%s", msg);
     fflush(log_file); // force write to file
 }

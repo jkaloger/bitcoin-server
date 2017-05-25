@@ -24,7 +24,7 @@ static inline void uint256_init (BYTE *uint256) {
 static inline void print_uint256 (BYTE *uint256) {
     printf ("0x");
     for (size_t i = 0; i < 32; i++) {
-        printf ("%02x", uint256[i]); 
+        printf ("%02x", uint256[i]);
     }
     printf ("\n");
 }
@@ -38,12 +38,12 @@ static inline void uint256_sl (BYTE *res, BYTE *a, BYTE shift) {
     BYTE mask = 0;
     BYTE carry = 0;
     if (shift == 0) {
-        memcpy (res, a, 32); 
+        memcpy (res, a, 32);
         return;
     }
     mask = 0xff << (8 - move_n);
     for (int i = 31 - b, j = 31; i > -1; i--, j--) {
-        res[i] = (a[j] << move_n) | carry; 
+        res[i] = (a[j] << move_n) | carry;
         carry = (a[j] & mask) >> move_n;
     }
 }
@@ -59,10 +59,13 @@ static inline void uint256_add (BYTE *res, BYTE *a, BYTE *b) {
     memcpy (aa, a, 32);
     memcpy (bb, b, 32);
     uint16_t temp = 0;
-    for (size_t i = 0; i < 32; i++) {
+    // Invalid Integer Overflow Bug discovered by Ziren Xiao on 09.05.2017 -
+    // 23:36:40
+    for (int i = 31; i > -1; i--) {
         temp >>= 8;
-        temp += aa[i] + bb[i];
-        res[i] = (BYTE) (temp & 0xff); 
+        temp += aa[i];
+        temp += bb[i];
+        res[i] = (BYTE) (temp & 0xff);
     }
 }
 
@@ -70,18 +73,18 @@ static inline void uint256_mul (BYTE *res, BYTE *a, BYTE *b) {
     if (res == NULL || a == NULL || b == NULL) {
         return;
     }
-    
-    BYTE temp[32], acc[32], aa[32], bb[32]; 
+
+    BYTE temp[32], acc[32], aa[32], bb[32];
     // we want to assert the invariance of a, b in the event that
     // a == res || b == res
     uint256_init (temp);
     uint256_init (aa);
     uint256_init (bb);
     uint256_init (acc);
- 
+
     memcpy (bb, b, 32);
     memcpy (aa, a, 32);
-   
+
     for (int i = 255; i > -1; i--) {
         if ((bb[i/8] & (1 << (7 - (i % 8)))) > 0) {
             uint256_sl (temp, aa, 255 - i);
@@ -110,14 +113,14 @@ static inline void uint256_exp (BYTE *res, BYTE *base, uint32_t exp) {
     if (res != base) {
         memcpy (acc, base, 32);
     }
-   
+
     temp[31] = 0x1;
 
     while (exp > 1) {
         if (exp % 2 == 0) {
             uint256_mul (acc, acc, acc);
             exp = exp / 2;
-            
+
         } else {
             uint256_mul (temp, acc, temp);
             uint256_mul (acc, acc, acc);
