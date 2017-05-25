@@ -11,10 +11,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <time.h>
@@ -30,7 +32,6 @@ FILE *log_file;
 void runServer(int portno) {
     int sockfd;
     struct sockaddr_in serv_addr;
-    int n  = 0;
 
     /* Create TCP socket */
 
@@ -83,8 +84,9 @@ void server_loop(int sockfd)
     log_file = fopen("./log.txt",  "w");
 
     /* Accept a connection. Get back a new file descriptor to communicate on. */
-    while(newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
-                             &clilen)) {
+    while((newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
+                              (socklen_t *)&clilen))) {
+        // create new thread and pass the file descriptor
         pthread_t tid;
         if(pthread_create(&tid, NULL, entry_point, &newsockfd) != 0) {
             perror("ERROR creating thread");
@@ -99,14 +101,14 @@ void printMalformedError(int sockfd)
 }
 
 /* Thread Entry */
-void entry_point(int *arg) {
+void entry_point(void *arg) {
     pthread_detach(pthread_self());
     char header[4];
     bzero(header, 4);
 
     // read counter
     int n = 0;
-    int sockfd = *arg;
+    int sockfd = *(int *)arg;
 
     /* Read characters from the connection,
         then process */
@@ -219,7 +221,7 @@ void soln_handler(int sockfd)
         pthread_exit(NULL);
     }
 
-    difficulty = (uint32_t)strtoul(diff_stream, NULL, 16); // hex2uint32
+    difficulty = (uint32_t)strtoul((const char *)diff_stream, NULL, 16); // hex2uint32
 
     /* read in seed */
     bzero(seed_stream, 65); // \0 will be written to the end
@@ -234,10 +236,10 @@ void soln_handler(int sockfd)
     BYTE *current = seed_stream;
     bzero(seed, 32);
     for(int i = 0 ; i < 32 ; i++) {
-        BYTE tmp[3]; // tmp var to store hex chars
+        char tmp[3]; // tmp var to store hex chars
         bzero(tmp, 3);
         sprintf(tmp, "%c%c", current[0], current[1]); // load hex chars into tmp var
-        uint8_t hex = strtol(tmp, NULL, 16);
+        uint8_t hex = strtol((const char *)tmp, NULL, 16);
         seed[i] = hex;
         current += 2 * sizeof(BYTE);
     }
@@ -253,14 +255,14 @@ void soln_handler(int sockfd)
         write_error(sockfd, "malformed solution");
     }
 
-    BYTE *current = seed_stream + sizeof(BYTE);
+    current = soln_stream + sizeof(BYTE);
     bzero(solution, 16);
     for(int i = 0 ; i < 32 ; i++) {
-        BYTE tmp[3]; // tmp var to store hex chars
+        char tmp[3]; // tmp var to store hex chars
         bzero(tmp, 3);
         sprintf(tmp, "%c%c", current[0], current[1]); // load hex chars into tmp var
-        uint8_t hex = strtol(tmp, NULL, 16);
-        seed[i] = hex;
+        uint8_t hex = strtol((const char *)tmp, NULL, 16);
+        solution[i] = hex;
         current += 2 * sizeof(BYTE);
     }
 
@@ -287,6 +289,7 @@ void soln_handler(int sockfd)
     uint32_t b = difficulty & 0x00FFFFFF;
     uint32_t target = b * 2^(8*(a-3));
 
+    /* TODO Y IS A UINT256_T????? COMPARISON IS INVALID IF BYTE[] ?? */
     if(y < target) {
         char *msg = "OKAY\r\n";
         n = write(sockfd, msg, 6);
@@ -314,13 +317,13 @@ void work_handler(int sockfd)
     int n;
 
     /* parsing vars */
-    BYTE diff_stream[10]; // 8 byte hex + 2 whitespace padding
+    BYTE diff_stream[10]; // 8 byte hex string + 2 whitespace padding
     uint32_t difficulty;
 
     BYTE seed_stream[65]; // 64 byte seed with null byte end
     BYTE seed[32];
 
-    BYTE start_stream[18]; // 16 byte hex + 2 whitespace padding
+    BYTE start_stream[18]; // 16 byte hex string + 2 whitespace padding
     uint64_t start;
 
     BYTE worker_stream[3];
@@ -339,7 +342,7 @@ void work_handler(int sockfd)
         pthread_exit(NULL);
     }
 
-    difficulty = (uint32_t)strtoul(diff_stream, NULL, 16); // hex2uint32
+    difficulty = (uint32_t)strtoul((const char *)diff_stream, NULL, 16); // hex2uint32
 
     /* read in seed */
     bzero(seed_stream, 65); // \0 will be written to the end
@@ -354,10 +357,10 @@ void work_handler(int sockfd)
     BYTE *current = seed_stream;
     bzero(seed, 32);
     for(int i = 0 ; i < 32 ; i++) {
-        BYTE tmp[3]; // tmp var to store hex chars
+        char tmp[3]; // tmp var to store hex chars
         bzero(tmp, 3);
         sprintf(tmp, "%c%c", current[0], current[1]); // load hex chars into tmp var
-        uint8_t hex = strtol(tmp, NULL, 16);
+        uint8_t hex = strtol((const char *)tmp, NULL, 16);
         seed[i] = hex;
         current += 2 * sizeof(BYTE);
     }
@@ -375,7 +378,7 @@ void work_handler(int sockfd)
         pthread_exit(NULL);
     }
 
-    start = strtoull(start_stream, NULL, 16);
+    start = strtoull((const char *)start_stream, NULL, 16);
 
     bzero(worker_stream, 3);
     n = read(sockfd, &worker_stream, 2); // read in the hex string padded by a space on either side
@@ -389,7 +392,7 @@ void work_handler(int sockfd)
         pthread_exit(NULL);
     }
 
-    worker_count = strtoul(worker_stream, NULL, 16);
+    worker_count = strtoul((const char *)worker_stream, NULL, 16);
 
     int a;
 }
@@ -400,7 +403,7 @@ void line_end_check(int sockfd)
     BYTE final[2];
     n = read(sockfd, &final,2);
     /* TODO: FIX THIS */
-    if(n < 2 || strncmp(final, "\r\n", 2) != 0) {
+    if(n < 2 || strncmp((const char *)final, "\r\n", 2) != 0) {
         write_error(sockfd, "invalid line endings");
         close(sockfd);
         pthread_exit(NULL);
@@ -410,7 +413,7 @@ void line_end_check(int sockfd)
 void write_error(int sockfd, char *str)
 {
     char err[48];
-    sprintf(&err, "ERRO %-40s\r\n", str);
+    sprintf((char *)&err, "ERRO %-40s\r\n", str);
     int n = write(sockfd, err, 48);
     if(n < 48) {
         perror("ERROR writing to socket");
@@ -439,7 +442,7 @@ void server_log(int sockfd, char *exchange, int is_server)
     }
 
     // generate/write message
-    sprintf(&msg, "[%s] %02d %-16s %s", time, sockfd, ip, exchange);
+    sprintf((char *)&msg, "[%s] %02d %-16s %s", time, sockfd, ip, exchange);
     fprintf(log_file, "%s", msg);
     fflush(log_file); // force write to file
 }

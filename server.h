@@ -10,7 +10,7 @@
 void runServer(int portno);
 void server_loop(int sockfd);
 void printMalformedError(int fd);
-void entry_point(int *arg);
+void entry_point(void *arg);
 void ping_handler(int sockfd);
 void pong_handler(int sockfd);
 void okay_handler(int sockfd);
