@@ -4,14 +4,18 @@
 
 #include "queue.h"
 #include <stdlib.h>
+#include <string.h>
 
 void enqueue(Queue *q, uint32_t diff, BYTE seed[64], uint64_t start, uint8_t worker_count)
 {
     Queue new = malloc(sizeof(struct queue_t));
-    new->difficulty = diff;
-    memcpy(new->seed, &seed, 64);
-    new->start = start;
-    new->worker_count = worker_count;
+    Work w = malloc(sizeof(struct work_t));
+    w->difficulty = diff;
+    memcpy(w->seed, &seed, 64);
+    w->start = start;
+    w->worker_count = worker_count;
+    new->work = w;
+    new->next = NULL;
 
     if(!*q) {
         *q = new;
