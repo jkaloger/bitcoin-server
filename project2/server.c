@@ -236,7 +236,7 @@ void soln_handler(int sockfd)
 
     line_end_check(sockfd);
 
-    if(check_proof(diff_stream, seed_stream, soln_stream)) {
+    if(check_proof(diff_stream, seed_stream, soln_stream) < 0) {
         write(sockfd, "OKAY\r\n", 6);
     } else {
         write_error(sockfd, "invalid proof of work");
@@ -331,23 +331,23 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
     // vars
     uint32_t difficulty;
     BYTE *seed;
-    uint64_t solution;
+    BYTE *solution;
     BYTE concat[40];
 
     difficulty = (uint32_t)strtoul((const char *)diff_stream, NULL, 16); // hex2uint32
     difficulty = htonl(difficulty);
-
     // convert hex string to hex values (64 byte character array to 32 byte hex/uint256)
     seed = hex2int(32, seed_stream);
 
-    solution = strtoull(soln_stream, NULL, 16);
+    //solution = strtoull(soln_stream, NULL, 16);
+    solution = hex2int(8, soln_stream + sizeof(char));
 
     bzero(concat, 40);
     // concatenate seed and solution
     memcpy(concat, seed, 32);
     /* TODO ENDIANNESS ? */
     //solution = htonl(solution);
-    memcpy(concat+32, &solution, 8);
+    memcpy(concat+32, solution, 8);
 
     /* crypto vars */
     SHA256_CTX ctx; // md5 structure that holds hash-related data
@@ -370,23 +370,15 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
     b = htonl(b);
     sprintf(beta_stream, "%064x", b); // 64 chars => 32 byte array
     BYTE target[32];
-    BYTE *beta_tmp;
+    BYTE *beta;
     beta = hex2int(32, beta_stream);
 
 
     uint256_init(target);
     uint256_sl(target, beta, (BYTE)a);
 
-    /* TODO Y IS A UINT256_T????? COMPARISON IS INVALID IF BYTE[] ?? */
-    if(y < target) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
+    int result = memcmp(y, target, 32);
 
-int hashcash(BYTE y, BYTE target)
-{
+    return result;
 
-    return -1;
 }
