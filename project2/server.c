@@ -166,14 +166,7 @@ void ping_handler(int sockfd)
 {
     line_end_check(sockfd);
     char *pong = "PONG\r\n";
-    int n;
-    n = write(sockfd, pong, 6);
-    if(n < 6) {
-        perror("ERROR writing to socket");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
-    server_log(sockfd, pong, 1);
+    write_msg(sockfd, pong, 6);
 }
 
 /* PONG message handler */
@@ -237,7 +230,7 @@ void soln_handler(int sockfd)
     line_end_check(sockfd);
 
     if(check_proof(diff_stream, seed_stream, soln_stream) < 0) {
-        write(sockfd, "OKAY\r\n", 6);
+        write_msg(sockfd, "OKAY\r\n", 6);
     } else {
         write_error(sockfd, "invalid proof of work");
     }
@@ -256,56 +249,6 @@ void work_handler(int sockfd)
     BYTE seed_stream[65]; // 64 byte seed with null byte end
     BYTE start_stream[18]; // 16 byte hex string + 2 whitespace padding
     BYTE worker_stream[3]; // 2 byte hex string + 1 whitespace padding
-}
-
-void line_end_check(int sockfd)
-{
-    int n;
-    BYTE final[2];
-    n = read(sockfd, &final,2);
-    /* TODO: FIX THIS */
-    if(n < 2 || strncmp((const char *)final, "\r\n", 2) != 0) {
-        write_error(sockfd, "invalid line endings");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
-}
-
-void write_error(int sockfd, char *str)
-{
-    char err[48];
-    sprintf((char *)&err, "ERRO %-40s\r\n", str);
-    int n = write(sockfd, err, 48);
-    if(n < 48) {
-        perror("ERROR writing to socket");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
-    server_log(sockfd, err, 1);
-}
-
-void server_log(int sockfd, char *exchange, int is_server)
-{
-    char msg[1024];
-    time_t now = time(0);
-    char time[20];
-    strftime(time, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
-
-    // get ip addr
-    char *ip;
-    if(is_server) {
-        ip = "0.0.0.0";
-    } else {
-        struct sockaddr_in addr;
-        socklen_t addr_size = sizeof(struct sockaddr_in);
-        getpeername(sockfd, (struct sockaddr *) &addr, &addr_size);
-        ip = inet_ntoa(addr.sin_addr);
-    }
-
-    // generate/write message
-    sprintf((char *)&msg, "[%s] %02d %-16s %s", time, sockfd, ip, exchange);
-    fprintf(log_file, "%s", msg);
-    fflush(log_file); // force write to file
 }
 
 BYTE *hex2int(int num_bytes, char *bytestream)
@@ -381,4 +324,66 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
 
     return result;
 
+}
+
+void line_end_check(int sockfd)
+{
+    int n;
+    BYTE final[2];
+    n = read(sockfd, &final,2);
+    /* TODO: FIX THIS */
+    if(n < 2 || strncmp((const char *)final, "\r\n", 2) != 0) {
+        write_error(sockfd, "invalid line endings");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+}
+
+void write_error(int sockfd, char *str)
+{
+    char err[48];
+    sprintf((char *)&err, "ERRO %-40s\r\n", str);
+    int n = write(sockfd, err, 48);
+    if(n < 48) {
+        perror("ERROR writing to socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+    server_log(sockfd, err, 1);
+}
+
+void write_msg(int sockfd, char *str, int strlen)
+{
+    int n;
+    n = write(sockfd, str, strlen);
+    if(n < strlen) {
+        perror("ERROR writing to socket");
+        close(sockfd);
+        pthread_exit(NULL);
+    }
+    server_log(sockfd, str, 1);
+}
+
+void server_log(int sockfd, char *exchange, int is_server)
+{
+    char msg[1024];
+    time_t now = time(0);
+    char time[20];
+    strftime(time, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    // get ip addr
+    char *ip;
+    if(is_server) {
+        ip = "0.0.0.0";
+    } else {
+        struct sockaddr_in addr;
+        socklen_t addr_size = sizeof(struct sockaddr_in);
+        getpeername(sockfd, (struct sockaddr *) &addr, &addr_size);
+        ip = inet_ntoa(addr.sin_addr);
+    }
+
+    // generate/write message
+    sprintf((char *)&msg, "[%s] %02d %-16s %s", time, sockfd, ip, exchange);
+    fprintf(log_file, "%s", msg);
+    fflush(log_file); // force write to file
 }
