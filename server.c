@@ -197,9 +197,9 @@ void soln_handler(int sockfd)
     int n;
 
     /* parsing vars */
-    BYTE diff_stream[10]; // 8 byte hex + 2 whitespace padding
-    BYTE seed_stream[65]; // 64 byte seed with null byte end
-    BYTE soln_stream[18]; // 16 byte hex + 2 whitespace padding
+    char diff_stream[10]; // 8 byte hex + 2 whitespace padding
+    char seed_stream[65]; // 64 byte seed with null byte end
+    char soln_stream[18]; // 16 byte hex + 2 whitespace padding
 
     /* read in difficulty */
     bzero(diff_stream, 10);
@@ -311,14 +311,14 @@ void server_log(int sockfd, char *exchange, int is_server)
 BYTE *hex2int(int num_bytes, char *bytestream)
 {
     // convert hex string to hex values
-    BYTE *output = malloc(sizeof(BYTE) * num_bytes);
+    BYTE *output = malloc(sizeof(BYTE) * (num_bytes + 1));
     char *current = bytestream;
-    bzero(output, num_bytes);
+    bzero(output, num_bytes + 1);
     for(int i = 0 ; i < num_bytes ; i++) {
         char tmp[3]; // tmp var to store hex chars
         bzero(tmp, 3);
         sprintf(tmp, "%c%c", current[0], current[1]); // load hex chars into tmp var
-        uint8_t hex = strtol((const char *)tmp, NULL, 16);
+        uint8_t hex = strtoul((const char *)tmp, NULL, 16);
         output[i] = hex;
         current += 2 * sizeof(char);
     }
@@ -326,42 +326,56 @@ BYTE *hex2int(int num_bytes, char *bytestream)
     return output;
 }
 
-int check_proof(BYTE *diff_stream, BYTE *seed_stream, BYTE *soln_stream)
+int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
 {
     // vars
     uint32_t difficulty;
-    BYTE *seed, *solution;
+    BYTE *seed;
+    uint64_t solution;
     BYTE concat[40];
 
     difficulty = (uint32_t)strtoul((const char *)diff_stream, NULL, 16); // hex2uint32
+    difficulty = htonl(difficulty);
 
     // convert hex string to hex values (64 byte character array to 32 byte hex/uint256)
     seed = hex2int(32, seed_stream);
 
-    solution = hex2int(8, soln_stream + sizeof(BYTE));
+    solution = strtoull(soln_stream, NULL, 16);
 
     bzero(concat, 40);
     // concatenate seed and solution
     memcpy(concat, seed, 32);
     /* TODO ENDIANNESS ? */
-    memcpy(concat+(32 * sizeof(BYTE)), solution, 8);
+    //solution = htonl(solution);
+    memcpy(concat+32, &solution, 8);
 
     /* crypto vars */
     SHA256_CTX ctx; // md5 structure that holds hash-related data
     BYTE y[SHA256_BLOCK_SIZE]; // hash output variable SHA256_BLOCK_SIZE is defined in sha256.h
 
     sha256_init(&ctx); // initialise the CTX object
-    sha256_update(&ctx, concat, 80); // add the data to be hashed to the hashing object
+    sha256_update(&ctx, concat, 40); // add the data to be hashed to the hashing object
     sha256_final(&ctx, y); // hash the data! outputs to hash variable
     /* hash again */
     sha256_init(&ctx); // initialise the CTX object
     sha256_update(&ctx, y, SHA256_BLOCK_SIZE); // add the data to be hashed to the hashing object
     sha256_final(&ctx, y); // hash the data! outputs to hash variable
 
-    uint32_t a = difficulty & 0xFF000000;
-    uint32_t b = difficulty & 0x00FFFFFF;
-    /* TODO CHANGE THIS TO uint256_t */
-    uint32_t target = b * 2^(8*(a-3));
+    unsigned  mask;
+    uint8_t a = difficulty & 0x000000FF;
+    a = 8*(a - 3);
+    mask = ((1 << 24) - 1) << 8;
+    BYTE beta_stream[65];
+    uint32_t b = difficulty & mask;
+    b = htonl(b);
+    sprintf(beta_stream, "%064x", b); // 64 chars => 32 byte array
+    BYTE target[32];
+    BYTE *beta_tmp;
+    beta = hex2int(32, beta_stream);
+
+
+    uint256_init(target);
+    uint256_sl(target, beta, (BYTE)a);
 
     /* TODO Y IS A UINT256_T????? COMPARISON IS INVALID IF BYTE[] ?? */
     if(y < target) {
