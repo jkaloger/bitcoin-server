@@ -408,7 +408,9 @@ void write_error(int sockfd, char *str)
         close(sockfd);
         pthread_exit(NULL);
     }
-    server_log(sockfd, err, 1);
+    char errlog[46];
+    sprintf((char *)&errlog, "ERRO %-40s", str);
+    server_log(sockfd, errlog, 1);
 }
 
 void write_msg(int sockfd, char *str, int strlen)

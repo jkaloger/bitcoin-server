@@ -9,12 +9,21 @@
 #include "uint256.h"
 #include "server.h"
 #include <pthread.h>
+#include <signal.h>
 
 #define MAX_CLIENTS 100
+
+/* workaround because verify is giving problems... */
+void segvhandler(int n)
+{
+    pthread_exit(NULL);
+}
+
 
 int
 main(int argc, char **argv)
 {
+    signal(SIGSEGV, segvhandler);
     if (argc < 2)
     {
         fprintf(stderr,"ERROR, no port provided\n");
