@@ -30,12 +30,14 @@ sem_t work_sem;
 // log file
 FILE *log_file;
 pthread_mutex_t list_ops;
+pthread_mutex_t conn_mutex;
 int modified;
 
 /* Start Server */
 void run_server(int portno) {
     modified = 0;
     pthread_mutex_init(&list_ops, NULL);
+    pthread_mutex_init(&conn_mutex, NULL);
     sem_init(&work_sem, 0, 0);
     /* initialise worker thread and queue */
     work_queue = NULL;
@@ -100,7 +102,9 @@ void server_loop(int sockfd)
     /* Accept a connection. Get back a new file descriptor to communicate on. */
     while((newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
                               &clilen))) {
+        pthread_mutex_lock(&conn_mutex);
         int *fd = malloc(sizeof(int));
+        pthread_mutex_unlock(&conn_mutex);
         *fd = newsockfd; // prevent a race condition by loading our file descriptor into a new var
         // we have our connection, pass the descriptor to a new thread, and return to accepting connections
         pthread_t tid;
@@ -118,8 +122,10 @@ void printMalformedError(int sockfd)
 
 void connection_entry(void *arg)
 {
+    pthread_mutex_lock(&conn_mutex);
     int sockfd = *(int *)arg;
     free(arg);
+    pthread_mutex_unlock(&conn_mutex);
 
     int used = 0;
     char *buff = malloc(sizeof(char) * 1024);
@@ -140,7 +146,7 @@ void connection_entry(void *arg)
 
     }
     // remove from queue
-    //dequeue_client(sockfd);
+    dequeue_client(sockfd);
     server_log(sockfd, "Connection Terminated", 1);
     close(sockfd);
     pthread_exit(NULL);
