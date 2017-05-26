@@ -166,6 +166,7 @@ void process(int sockfd, char *buff) {
     } else if (strncmp(buff, "ABRT\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         dequeue_client(sockfd);
+        write_msg("OKAY", 4);
     }else {
         write_error(sockfd, "Invalid server usage");
     }
@@ -208,17 +209,17 @@ void soln_handler(int sockfd, char *buffer)
 
     /* read in difficulty */
     bzero(diff_stream, 9* sizeof(char));
-    memcpy(diff_stream, buf_counter, 9* sizeof(char));
+    memcpy(diff_stream, buf_counter, 9 * sizeof(char));
     buf_counter += 9* sizeof(char);
 
     /* read in seed */
     bzero(seed_stream, 65* sizeof(char)); // \0 will be written to the end
-    memcpy(seed_stream, buf_counter, 65* sizeof(char));
+    memcpy(seed_stream, buf_counter, 65 * sizeof(char));
     buf_counter += 65* sizeof(char);
 
     /* read in solution */
     bzero(soln_stream, 18* sizeof(char));
-    memcpy(soln_stream, buf_counter, 17* sizeof(char));
+    memcpy(soln_stream, buf_counter, 17 * sizeof(char));
     buf_counter += 17* sizeof(char);
 
     if(check_proof(diff_stream, seed_stream, soln_stream) < 0) {
