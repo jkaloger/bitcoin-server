@@ -132,7 +132,7 @@ void connection_entry(void *arg)
     bzero(buff, 1024);
     server_log(sockfd, "Connection Established", 1);
     int n;
-    while((n = read(sockfd, &buff[used], 1024 - used)) > 0) { // while connection is active
+    while((n = read(sockfd, &buff[used], 1023 - used)) > 0) { // while connection is active
         used += n;
         char *end;
         while((end = memmem(buff, used, "\r\n", 2))) {
@@ -145,6 +145,7 @@ void connection_entry(void *arg)
         }
 
     }
+    printf("%s", buff);
     // remove from queue
     dequeue_client(sockfd);
     server_log(sockfd, "Connection Terminated", 1);
@@ -358,7 +359,7 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
 void work_thread(void *arg)
 {
     while(1) {
-        if(work_queue != NULL) {
+        if(work_queue != NULL && work_queue->work != NULL) {
             find_soln(work_queue->work, work_queue->sockfd);
             dequeue(&work_queue);
         } else {
