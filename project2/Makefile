@@ -32,3 +32,4 @@ clobber: clean
 ## Dependencies
 main.o: sha256.h uint256.h server.h
 server.o: queue.h server.h sha256.h uint256.h
+queue.o: queue.h
