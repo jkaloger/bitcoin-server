@@ -29,9 +29,11 @@ Queue work_queue;
 sem_t work_sem;
 // log file
 FILE *log_file;
+pthread_mutex_t mutex;
 
 /* Start Server */
 void run_server(int portno) {
+    pthread_mutex_init ( &mutex, NULL);
     sem_init(&work_sem, 0, 0);
     /* initialise worker thread and queue */
     work_queue = NULL;
@@ -128,13 +130,15 @@ void connection_entry(void *arg)
         while((end = memmem(buff, used, "\r\n", 2))) {
             int len = (end - buff);
             char *line = malloc(sizeof(char) * len);
-            memcpy(line, buff, len);
+            memcpy(line, buff, len + 2);
             process(sockfd, line);
             used -= len + 2;
             memmove(buff, end + 2, used);
         }
 
     }
+    // remove from queue
+    dequeue_client(sockfd);
     server_log(sockfd, "Connection Terminated", 1);
     close(sockfd);
     pthread_exit(NULL);
@@ -142,22 +146,25 @@ void connection_entry(void *arg)
 
 void process(int sockfd, char *buff) {
 /* parse the header */
-    if (strncmp(buff, "PING", 4) == 0) {
+    if (strncmp(buff, "PING\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         ping_handler(sockfd);
-    } else if (strncmp(buff, "PONG", 4) == 0) {
+    } else if (strncmp(buff, "PONG\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         pong_handler(sockfd);
-    } else if (strncmp(buff, "OKAY", 4) == 0) {
+    } else if (strncmp(buff, "OKAY\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         okay_handler(sockfd);
-    } else if (strncmp(buff, "SOLN", 4) == 0) {
+    } else if (strncmp(buff, "SOLN ", 5) == 0) {
         server_log(sockfd, buff, 0);
         soln_handler(sockfd, buff + 5);
-    } else if (strncmp(buff, "WORK", 4) == 0) {
+    } else if (strncmp(buff, "WORK ", 5) == 0) {
         server_log(sockfd, buff, 0);
         work_handler(sockfd, buff + 5);
-    } else {
+    } else if (strncmp(buff, "ABRT\r\n", 6) == 0) {
+        server_log(sockfd, buff, 0);
+        dequeue_client(sockfd);
+    }else {
         write_error(sockfd, "Invalid server usage");
     }
 }
@@ -331,7 +338,7 @@ void work_thread(void *arg)
 {
     while(1) {
         if(work_queue) {
-            find_soln(work_queue->work);
+            find_soln(work_queue->work, work_queue->sockfd);
             dequeue(&work_queue);
         } else {
             sem_wait(&work_sem);
@@ -339,7 +346,7 @@ void work_thread(void *arg)
     }
 }
 
-void find_soln(Work work)
+void find_soln(Work work, int sockfd)
 {
     uint64_t solution = strtoull(work->start, NULL, 16);
     while(1) {
@@ -348,13 +355,11 @@ void find_soln(Work work)
             char msg[98];
             bzero(msg, 98);
             sprintf(msg, "SOLN %s %s %s", work->difficulty, work->seed, work->start);
-            write_msg(work->sockfd, msg, 95);
+            write_msg(sockfd, msg, 95);
             break;
         }
         // increment solution
-        solution = ntohl(solution);
         solution++;
-        solution = htonl(solution);
         sprintf(work->start, "%016llx", solution);
     }
 }
@@ -408,4 +413,11 @@ void server_log(int sockfd, char *exchange, int is_server)
     sprintf((char *)&msg, "[%s] %02d %-16s %s\n", time, sockfd, ip, exchange);
     fprintf(log_file, "%s", msg);
     fflush(log_file); // force write to file
+}
+
+void dequeue_client(int sockfd)
+{
+    pthread_mutex_lock(&mutex);
+    removeWork(&work_queue, sockfd);
+    pthread_mutex_unlock(&mutex);
 }

@@ -9,8 +9,8 @@
 void enqueue(Queue *q, int sockfd, char *diff_stream, char *seed_stream, char *start_stream, char *worker_stream)
 {
     Queue new = malloc(sizeof(struct queue_t));
+    new->sockfd = sockfd;
     Work w = malloc(sizeof(struct work_t));
-    w->sockfd = sockfd;
     bzero(w->difficulty, 9);
     memcpy(w->difficulty, diff_stream, 8);
     bzero(w->seed, 65);
@@ -41,4 +41,25 @@ void dequeue(Queue *q)
     Queue toFree = *q;
     (*q) = (*q)->next;
     free(toFree);
+}
+
+void removeWork(Queue *q, int sockfd)
+{
+    // the item was at the head of the list
+    if((*q)->sockfd == sockfd) {
+        Queue toFree = *q;
+        *q = (*q)->next;
+        free(toFree);
+        return;
+    }
+
+    // iterator
+    Queue temp = *q;
+    while(temp->next != NULL) { // loop until end of list
+        if((temp->next)->sockfd == sockfd) {
+            // found our item
+            temp->next = (temp->next)->next;
+        }
+        temp = temp->next;
+    }
 }
