@@ -23,13 +23,14 @@ struct queue_t {
 };
 
 struct work_t {
-    uint32_t difficulty;
-    BYTE seed[64];
-    uint64_t start;
-    uint8_t worker_count;
+    int sockfd;
+    char difficulty[9];
+    char seed[65];
+    char start[17];
+    char worker_count[3];
 };
 
-void enqueue(Queue *q, uint32_t diff, BYTE seed[64], uint64_t start, uint8_t worker_count);
+void enqueue(Queue *q, int sockfd, char *diff_stream, char *seed_stream, char *start_stream, char *worker_stream);
 void dequeue(Queue *q);
 
 #endif //QUEUE_H

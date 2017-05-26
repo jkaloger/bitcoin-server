@@ -20,16 +20,25 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <time.h>
+#include <semaphore.h>
 
 /* SHARED BETWEEN THREADS */
 // global work queue
 Queue work_queue;
-
+// work semaphore
+sem_t work_sem = 1;
 // log file
 FILE *log_file;
 
 /* Start Server */
 void run_server(int portno) {
+    /* initialise worker thread and queue */
+    work_queue = NULL;
+    pthread_t worker_thread;
+    if(pthread_create(&worker_thread, NULL, work_thread, NULL) != 0) {
+        perror("ERROR creating thread");
+        exit(1);
+    }
     int sockfd;
     struct sockaddr_in serv_addr;
 
@@ -86,9 +95,11 @@ void server_loop(int sockfd)
     /* Accept a connection. Get back a new file descriptor to communicate on. */
     while((newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr,
                               &clilen))) {
+        int *fd = malloc(sizeof(int));
+        *fd = newsockfd; // prevent a race condition by loading our file descriptor into a new var
         // we have our connection, pass the descriptor to a new thread, and return to accepting connections
         pthread_t tid;
-        if(pthread_create(&tid, NULL, connection_entry, &newsockfd) != 0) {
+        if(pthread_create(&tid, NULL, connection_entry, fd) != 0) {
             perror("ERROR creating thread");
             exit(1);
         }
@@ -102,12 +113,13 @@ void printMalformedError(int sockfd)
 
 void connection_entry(void *arg)
 {
+    int sockfd = *(int *)arg;
+    free(arg);
 
     int used = 0;
     char *buff = malloc(sizeof(char) * 1024);
     bzero(buff, 1024);
-    int sockfd = *(int *)arg;
-    server_log(sockfd, "Connection Established\r\n", 1);
+    server_log(sockfd, "Connection Established", 1);
     int n;
     while((n = read(sockfd, &buff[used], 1024 - used)) > 0) { // while connection is active
         used += n;
@@ -122,7 +134,9 @@ void connection_entry(void *arg)
         }
 
     }
-    server_log(sockfd, "Connection Terminated\r\n", 1);
+    server_log(sockfd, "Connection Terminated", 1);
+    close(sockfd);
+    pthread_exit(NULL);
 }
 
 void process(int sockfd, char *buff) {
@@ -138,76 +152,19 @@ void process(int sockfd, char *buff) {
         okay_handler(sockfd);
     } else if (strncmp(buff, "SOLN", 4) == 0) {
         server_log(sockfd, buff, 0);
-        soln_handler(sockfd);
+        soln_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "WORK", 4) == 0) {
         server_log(sockfd, buff, 0);
-        work_handler(sockfd);
+        work_handler(sockfd, buff + 5);
     } else {
         write_error(sockfd, "Invalid server usage");
-    }
-}
-
-/* Thread Entry (OLD) */
-void entry_point(void *arg) {
-    pthread_detach(pthread_self());
-    char header[4];
-    bzero(header, 4);
-
-    // read counter
-    int n = 0;
-    int sockfd = *(int *)arg;
-
-    /* Read characters from the connection,
-        then process */
-
-    n = read(sockfd, header, 4);
-    if (n < 0) {
-        perror("ERROR reading from socket");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
-
-
-    /* check the header is valid */
-    if (n < 4) {
-        printMalformedError(sockfd);
-        close(sockfd);
-        pthread_exit(NULL);
-    }
-
-    /* TODO : PARSE FULL MESSAGE BEFORE SENDING -- ADDING TO LOG */
-
-    /* parse the header */
-    if (strncmp(header, "PING", 4) == 0) {
-        server_log(sockfd, "PING\r\n", 0);
-        ping_handler(sockfd);
-    } else if (strncmp(header, "PONG", 4) == 0) {
-        server_log(sockfd, "PONG\r\n", 0);
-        pong_handler(sockfd);
-    } else if (strncmp(header, "OKAY", 4) == 0) {
-        server_log(sockfd, "OKAY\r\n", 0);
-        okay_handler(sockfd);
-    } else if (strncmp(header, "SOLN", 4) == 0) {
-        server_log(sockfd, "SOLN\r\n", 0);
-        soln_handler(sockfd);
-    } else if (strncmp(header, "WORK", 4) == 0) {
-        server_log(sockfd, "WORK\r\n", 0);
-        work_handler(sockfd);
-    }
-    else
-        n = write(sockfd, "ERRO\tInvalid server usage\r\n", 27);
-
-    if (n < 0) {
-        perror("ERROR writing to socket");
-        close(sockfd);
-        pthread_exit(NULL);
     }
 }
 
 /* PING message handler */
 void ping_handler(int sockfd)
 {
-    write_msg(sockfd, "PONG\r\n", 6);
+    write_msg(sockfd, "PONG", 4);
 }
 
 /* PONG message handler */
@@ -223,67 +180,76 @@ void okay_handler(int sockfd)
 }
 
 /* SOLN message handler */
-void soln_handler(int sockfd)
+void soln_handler(int sockfd, char *buffer)
 {
     /* counting vars */
     int n;
 
     /* parsing vars */
-    char diff_stream[10]; // 8 byte hex + 2 whitespace padding
+    char diff_stream[9]; // 8 byte hex with null byte end
     char seed_stream[65]; // 64 byte seed with null byte end
-    char soln_stream[18]; // 16 byte hex + 2 whitespace padding
+    char soln_stream[17]; // 16 byte hex with null byte end
+    char *buf_counter = buffer;
 
     /* read in difficulty */
-    bzero(diff_stream, 10);
-    n = read(sockfd, &diff_stream, 10); // read in the hex string padded by a space on either side
-    if (n < 0) {
-        perror("ERROR reading from socket");
-        close(sockfd);
-        pthread_exit(NULL);
-    } else if(n < 10) {
-        write_error(sockfd, "malformed difficulty");
-        close(sockfd);
-        pthread_exit(NULL);
-    }
+    bzero(diff_stream, 9* sizeof(char));
+    memcpy(diff_stream, buf_counter, 9* sizeof(char));
+    buf_counter += 9* sizeof(char);
 
     /* read in seed */
-    bzero(seed_stream, 65); // \0 will be written to the end
-    n = read(sockfd, seed_stream, 64); // read in our seed
-    if(n < 0) {
-
-    } else if(n < 64) {
-
-    }
+    bzero(seed_stream, 65* sizeof(char)); // \0 will be written to the end
+    memcpy(seed_stream, buf_counter, 65* sizeof(char));
+    buf_counter += 65* sizeof(char);
 
     /* read in solution */
-    bzero(soln_stream, 18);
-    n = read(sockfd, soln_stream, 17); // read in the hex string padded by a space at index 0
-    if (n < 0) {
-        perror("ERROR reading from socket");
-        close(sockfd);
-        pthread_exit(NULL);
-    } else if(n < 17) {
-        write_error(sockfd, "malformed solution");
-    }
+    bzero(soln_stream, 18* sizeof(char));
+    memcpy(soln_stream, buf_counter, 17* sizeof(char));
+    buf_counter += 17* sizeof(char);
 
     if(check_proof(diff_stream, seed_stream, soln_stream) < 0) {
-        write_msg(sockfd, "OKAY\r\n", 6);
+        write_msg(sockfd, "OKAY", 4);
     } else {
         write_error(sockfd, "invalid proof of work");
     }
 }
 
 /* WORK message handler */
-void work_handler(int sockfd)
+void work_handler(int sockfd, char *buffer)
 {
     /* counting vars */
     int n;
 
     /* parsing vars */
-    BYTE diff_stream[10]; // 8 byte hex string + 2 whitespace padding
+    BYTE diff_stream[9]; // 8 byte hex string with null byte end
     BYTE seed_stream[65]; // 64 byte seed with null byte end
-    BYTE start_stream[18]; // 16 byte hex string + 2 whitespace padding
-    BYTE worker_stream[3]; // 2 byte hex string + 1 whitespace padding
+    BYTE start_stream[17]; // 16 byte hex string with null byte end
+    BYTE worker_stream[3]; // 2 byte hex string with null byte end
+    char *buf_counter = buffer;
+
+    /* read in difficulty */
+    bzero(diff_stream, 9* sizeof(char));
+    memcpy(diff_stream, buf_counter, 8* sizeof(char));
+    buf_counter += 9* sizeof(char);
+
+    /* read in seed */
+    bzero(seed_stream, 65* sizeof(char)); // \0 will be written to the end
+    memcpy(seed_stream, buf_counter, 64* sizeof(char));
+    buf_counter += 65* sizeof(char);
+
+    /* read in start */
+    bzero(start_stream, 17* sizeof(char));
+    memcpy(start_stream, buf_counter, 16* sizeof(char));
+    buf_counter += 17* sizeof(char);
+
+    /* read in worker_count */
+    bzero(worker_stream, 3 * sizeof(char)); // \0 will be written to the end
+    memcpy(worker_stream, buf_counter, 2 * sizeof(char));
+    buf_counter += 3 * sizeof(char);
+
+    /* add to queue */
+    enqueue(&work_queue, sockfd, diff_stream, seed_stream, start_stream, worker_stream);
+    sem_post(&work_sem);
+
 }
 
 BYTE *hex2int(int num_bytes, char *bytestream)
@@ -318,12 +284,11 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
     seed = hex2int(32, seed_stream);
 
     //solution = strtoull(soln_stream, NULL, 16);
-    solution = hex2int(8, soln_stream + sizeof(char));
+    solution = hex2int(8, soln_stream);
 
     bzero(concat, 40);
     // concatenate seed and solution
     memcpy(concat, seed, 32);
-    /* TODO ENDIANNESS ? */
     //solution = htonl(solution);
     memcpy(concat+32, solution, 8);
 
@@ -361,6 +326,38 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
 
 }
 
+void work_thread(void *arg)
+{
+    while(1) {
+        if(work_queue) {
+            find_soln(work_queue->work);
+            dequeue(&work_queue);
+        } else {
+            sem_wait(&work_sem);
+        }
+    }
+}
+
+void find_soln(Work work)
+{
+    uint64_t solution = strtoull(work->start, NULL, 16);
+    while(1) {
+        if(check_proof(work->difficulty, work->seed, work->start) < 0) {
+            // give the message back
+            char msg[98];
+            bzero(msg, 98);
+            sprintf(msg, "SOLN %s %s %s", work->difficulty, work->seed, work->start);
+            write_msg(work->sockfd, msg, 95);
+            break;
+        }
+        // increment solution
+        solution = ntohl(solution);
+        solution++;
+        solution = htonl(solution);
+        sprintf(work->start, "%016llx", solution);
+    }
+}
+
 void write_error(int sockfd, char *str)
 {
     char err[48];
@@ -377,7 +374,9 @@ void write_error(int sockfd, char *str)
 void write_msg(int sockfd, char *str, int strlen)
 {
     int n;
-    n = write(sockfd, str, strlen);
+    char msg[strlen + 3 * sizeof(char)];
+    sprintf(msg, "%s\r\n", str);
+    n = write(sockfd, msg, strlen + 2);
     if(n < strlen) {
         perror("ERROR writing to socket");
         close(sockfd);
@@ -405,7 +404,7 @@ void server_log(int sockfd, char *exchange, int is_server)
     }
 
     // generate/write message
-    sprintf((char *)&msg, "[%s] %02d %-16s %s", time, sockfd, ip, exchange);
+    sprintf((char *)&msg, "[%s] %02d %-16s %s\n", time, sockfd, ip, exchange);
     fprintf(log_file, "%s", msg);
     fflush(log_file); // force write to file
 }
