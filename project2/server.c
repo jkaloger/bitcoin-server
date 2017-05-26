@@ -137,7 +137,8 @@ void connection_entry(void *arg)
         char *end;
         while((end = memmem(buff, used, "\r\n", 2))) {
             int len = (end - buff);
-            char *line = malloc(sizeof(char) * len);
+            char *line = malloc(sizeof(char) * 1024);
+            bzero(line, 1024);
             memcpy(line, buff, len + 2);
             process(sockfd, line);
             used -= len + 2;
