@@ -162,7 +162,7 @@ void process(int sockfd, char *buff) {
         soln_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "WORK ", 5) == 0) {
         server_log(sockfd, buff, 0);
-        work_handler(sockfd, buff + 5);
+        //work_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "ABRT\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         dequeue_client(sockfd);
