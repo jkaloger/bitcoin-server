@@ -200,6 +200,11 @@ void soln_handler(int sockfd, char *buffer)
     char seed_stream[65]; // 64 byte seed with null byte end
     char soln_stream[17]; // 16 byte hex with null byte end
     char *buf_counter = buffer;
+    if(strnlen(buffer, 1024) != 92)
+    {
+        write_error(sockfd, "malformed message data");
+        return;
+    }
 
     /* read in difficulty */
     bzero(diff_stream, 9* sizeof(char));

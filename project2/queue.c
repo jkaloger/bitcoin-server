@@ -45,7 +45,7 @@ void dequeue(Queue *q)
 
 void removeWork(Queue *q, int sockfd)
 {
-    if(!q)
+    if(!*q)
         return;
     // the item was at the head of the list
     if((*q)->sockfd == sockfd) {
@@ -57,10 +57,13 @@ void removeWork(Queue *q, int sockfd)
 
     // iterator
     Queue temp = *q;
+    if(!temp)
+        return;
     while(temp->next != NULL) { // loop until end of list
         if((temp->next)->sockfd == sockfd) {
             // found our item
             temp->next = (temp->next)->next;
+            temp = *q;
         }
         temp = temp->next;
     }
