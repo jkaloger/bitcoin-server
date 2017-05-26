@@ -125,7 +125,7 @@ void connection_entry(void *arg)
     while((n = read(sockfd, &buff[used], 1024 - used)) > 0) { // while connection is active
         used += n;
         char *end;
-        while((end = strnstr(buff, "\r\n", used))) {
+        while((end = memmem(buff, used, "\r\n", 2))) {
             int len = (end - buff);
             char *line = malloc(sizeof(char) * len);
             memcpy(line, buff, len);
