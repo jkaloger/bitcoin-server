@@ -29,13 +29,13 @@ Queue work_queue;
 sem_t work_sem;
 // log file
 FILE *log_file;
-pthread_mutex_t clearing_list;
+pthread_mutex_t list_ops;
 int modified;
 
 /* Start Server */
 void run_server(int portno) {
     modified = 0;
-    pthread_mutex_init(&clearing_list, NULL);
+    pthread_mutex_init(&list_ops, NULL);
     sem_init(&work_sem, 0, 0);
     /* initialise worker thread and queue */
     work_queue = NULL;
@@ -162,7 +162,7 @@ void process(int sockfd, char *buff) {
         soln_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "WORK ", 5) == 0) {
         server_log(sockfd, buff, 0);
-        //work_handler(sockfd, buff + 5);
+        work_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "ABRT\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         dequeue_client(sockfd);
@@ -268,7 +268,9 @@ void work_handler(int sockfd, char *buffer)
     buf_counter += 3 * sizeof(char);
 
     /* add to queue */
+    pthread_mutex_lock(&list_ops);
     enqueue(&work_queue, sockfd, diff_stream, seed_stream, start_stream, worker_stream);
+    pthread_mutex_unlock(list_ops);
     sem_post(&work_sem);
 
 }
@@ -363,13 +365,13 @@ void find_soln(Work work, int sockfd)
 {
     uint64_t solution = strtoull(work->start, NULL, 16);
     while(1) {
-        pthread_mutex_lock(&clearing_list);
+        pthread_mutex_lock(&list_ops);
         if(modified) {
             modified = 0;
-            pthread_mutex_unlock(&clearing_list);
+            pthread_mutex_unlock(&list_ops);
             break;
         }
-        pthread_mutex_unlock(&clearing_list);
+        pthread_mutex_unlock(&list_ops);
         if(check_proof(work->difficulty, work->seed, work->start) < 0) {
             // give the message back
             char msg[98];
@@ -438,12 +440,14 @@ void server_log(int sockfd, char *exchange, int is_server)
 
 void dequeue_client(int sockfd)
 {
-    if(!work_queue)
+    pthread_mutex_lock(&list_ops);
+    if(!work_queue) {
+        pthread_mutex_unlock(&list_ops);
         return;
-    pthread_mutex_lock(&clearing_list);
+    }
     if(work_queue->sockfd == sockfd) {
         modified = 1;
     }
     removeWork(&work_queue, sockfd);
-    pthread_mutex_unlock(&clearing_list);
+    pthread_mutex_unlock(&list_ops);
 }
