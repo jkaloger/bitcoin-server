@@ -29,11 +29,13 @@ Queue work_queue;
 sem_t work_sem;
 // log file
 FILE *log_file;
-pthread_mutex_t mutex;
+pthread_mutex_t clearing_list;
+int modified;
 
 /* Start Server */
 void run_server(int portno) {
-    pthread_mutex_init ( &mutex, NULL);
+    modified = 0;
+    pthread_mutex_init(&clearing_list, NULL);
     sem_init(&work_sem, 0, 0);
     /* initialise worker thread and queue */
     work_queue = NULL;
@@ -351,6 +353,13 @@ void find_soln(Work work, int sockfd)
 {
     uint64_t solution = strtoull(work->start, NULL, 16);
     while(1) {
+        pthread_mutex_lock(&clearing_list);
+        if(modified) {
+            modified = 0;
+            pthread_mutex_unlock(&clearing_list);
+            break;
+        }
+        pthread_mutex_unlock(&clearing_list);
         if(check_proof(work->difficulty, work->seed, work->start) < 0) {
             // give the message back
             char msg[98];
@@ -419,7 +428,8 @@ void server_log(int sockfd, char *exchange, int is_server)
 
 void dequeue_client(int sockfd)
 {
-    pthread_mutex_lock(&mutex);
+    pthread_mutex_lock(&clearing_list);
     removeWork(&work_queue, sockfd);
-    pthread_mutex_unlock(&mutex);
+    modified = 1;
+    pthread_mutex_unlock(&clearing_list);
 }
