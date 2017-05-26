@@ -421,7 +421,7 @@ void server_log(int sockfd, char *exchange, int is_server)
 
     // generate/write message
     sprintf((char *)&msg, "[%s] %02d %-16s %s\n", time, sockfd, ip, exchange);
-    fprintf(stderr, "%s", msg);
+    fprintf(stdout, "%s", msg);
     fprintf(log_file, "%s", msg);
     fflush(log_file); // force write to file
 }
