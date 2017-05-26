@@ -32,7 +32,7 @@ FILE *log_file;
 
 /* Start Server */
 void run_server(int portno) {
-    sem_init(&sem, 0, 0);
+    sem_init(&work_sem, 0, 0);
     /* initialise worker thread and queue */
     work_queue = NULL;
     pthread_t worker_thread;
