@@ -171,7 +171,7 @@ void process(int sockfd, char *buff) {
         work_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "ABRT\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
-        //dequeue_client(sockfd);
+        dequeue_client(sockfd);
         write_msg(sockfd, "OKAY", 4);
     }else {
         write_error(sockfd, "Invalid server usage");
@@ -275,7 +275,7 @@ void work_handler(int sockfd, char *buffer)
 
     /* add to queue */
     pthread_mutex_lock(&list_ops);
-    //enqueue(&work_queue, sockfd, diff_stream, seed_stream, start_stream, worker_stream);
+    enqueue(&work_queue, sockfd, diff_stream, seed_stream, start_stream, worker_stream);
     pthread_mutex_unlock(&list_ops);
     sem_post(&work_sem);
 
@@ -357,14 +357,14 @@ int check_proof(char *diff_stream, char *seed_stream, char *soln_stream)
 
 void work_thread(void *arg)
 {
-    /*while(1) {
-        if(work_queue) {
+    while(1) {
+        if(work_queue != NULL) {
             find_soln(work_queue->work, work_queue->sockfd);
             dequeue(&work_queue);
         } else {
             sem_wait(&work_sem);
         }
-    }*/
+    }
 }
 
 void find_soln(Work work, int sockfd)
