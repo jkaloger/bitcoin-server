@@ -139,7 +139,7 @@ void connection_entry(void *arg)
             int len = (end - buff);
             if(len <= 0) {
                 fprintf("buffer overflow, try again");
-                continue;
+                break;
             }
             char *line = malloc(sizeof(char) * 1024);
             bzero(line, 1024);
