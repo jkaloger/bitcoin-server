@@ -428,8 +428,12 @@ void server_log(int sockfd, char *exchange, int is_server)
 
 void dequeue_client(int sockfd)
 {
+    if(!work_queue)
+        return;
     pthread_mutex_lock(&clearing_list);
+    if(work_queue->sockfd == sockfd) {
+        modified = 1;
+    }
     removeWork(&work_queue, sockfd);
-    modified = 1;
     pthread_mutex_unlock(&clearing_list);
 }
