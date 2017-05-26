@@ -166,7 +166,7 @@ void process(int sockfd, char *buff) {
     } else if (strncmp(buff, "ABRT\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         dequeue_client(sockfd);
-        write_msg("OKAY", 4);
+        write_msg(sockfd, "OKAY", 4);
     }else {
         write_error(sockfd, "Invalid server usage");
     }
@@ -241,6 +241,11 @@ void work_handler(int sockfd, char *buffer)
     BYTE start_stream[17]; // 16 byte hex string with null byte end
     BYTE worker_stream[3]; // 2 byte hex string with null byte end
     char *buf_counter = buffer;
+    if(strnlen(buffer, 1024) != 95)
+    {
+        write_error(sockfd, "malformed message data");
+        return;
+    }
 
     /* read in difficulty */
     bzero(diff_stream, 9* sizeof(char));
