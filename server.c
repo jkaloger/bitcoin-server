@@ -137,6 +137,10 @@ void connection_entry(void *arg)
         char *end;
         while((end = memmem(buff, used, "\r\n", 2))) {
             int len = (end - buff);
+            if(len <= 0) {
+                fprintf("buffer overflow, try again");
+                continue;
+            }
             char *line = malloc(sizeof(char) * 1024);
             bzero(line, 1024);
             memcpy(line, buff, len + 2);
