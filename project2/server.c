@@ -146,8 +146,7 @@ void connection_entry(void *arg)
 }
 
 void process(int sockfd, char *buff) {
-    printf("%s\n", buff);
-/* parse the header */
+    /* parse the header */
     if (strncmp(buff, "PING\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
         ping_handler(sockfd);
@@ -413,6 +412,7 @@ void server_log(int sockfd, char *exchange, int is_server)
 
     // generate/write message
     sprintf((char *)&msg, "[%s] %02d %-16s %s\n", time, sockfd, ip, exchange);
+    fprintf(stderr, "%s", msg);
     fprintf(log_file, "%s", msg);
     fflush(log_file); // force write to file
 }
