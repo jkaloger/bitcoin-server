@@ -16,7 +16,6 @@
 /* workaround because verify is giving problems... */
 void segvhandler(int n)
 {
-    printf("SEGFAULT");
     pthread_exit(NULL);
 }
 
