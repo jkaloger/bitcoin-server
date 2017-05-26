@@ -26,12 +26,13 @@
 // global work queue
 Queue work_queue;
 // work semaphore
-sem_t work_sem = 1;
+sem_t work_sem;
 // log file
 FILE *log_file;
 
 /* Start Server */
 void run_server(int portno) {
+    sem_init(&sem, 0, 0);
     /* initialise worker thread and queue */
     work_queue = NULL;
     pthread_t worker_thread;
