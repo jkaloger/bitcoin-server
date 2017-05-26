@@ -140,8 +140,7 @@ void connection_entry(void *arg)
 
     }
     // remove from queue
-    if(work_queue)
-        dequeue_client(sockfd);
+    dequeue_client(sockfd);
     server_log(sockfd, "Connection Terminated", 1);
     close(sockfd);
     pthread_exit(NULL);
