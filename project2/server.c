@@ -138,13 +138,15 @@ void connection_entry(void *arg)
 
     }
     // remove from queue
-    dequeue_client(sockfd);
+    if(work_queue)
+        dequeue_client(sockfd);
     server_log(sockfd, "Connection Terminated", 1);
     close(sockfd);
     pthread_exit(NULL);
 }
 
 void process(int sockfd, char *buff) {
+    printf("%s\n", buff);
 /* parse the header */
     if (strncmp(buff, "PING\r\n", 6) == 0) {
         server_log(sockfd, buff, 0);
