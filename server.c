@@ -39,6 +39,7 @@ void run_server(int portno) {
     pthread_mutex_init(&list_ops, NULL);
     pthread_mutex_init(&conn_mutex, NULL);
     sem_init(&work_sem, 0, 0);
+
     /* initialise worker thread and queue */
     work_queue = NULL;
     pthread_t worker_thread;
@@ -137,15 +138,19 @@ void connection_entry(void *arg)
         char *end;
         while((end = memmem(buff, used, "\r\n", 2))) {
             int len = (end - buff);
-            if(len <= 0) {
+            if(len < 0) {
                 fprintf(stdout, "buffer overflow, try again");
                 break;
+            } else if(len == 0) { // newline only :/
+                server_log(sockfd, "", 0);
+                write_error(sockfd, "no header detected");
+                memmove(buff, end + 2, 2);
             }
             char *line = malloc(sizeof(char) * 1024);
             bzero(line, 1024);
             memcpy(line, buff, len + 2);
             process(sockfd, line);
-            used -= len + 2;
+            used -= len + 2 * sizeof(char);
             memmove(buff, end + 2, used);
         }
 
@@ -160,23 +165,18 @@ void connection_entry(void *arg)
 
 void process(int sockfd, char *buff) {
     /* parse the header */
+    server_log(sockfd, buff, 0);
     if (strncmp(buff, "PING\r\n", 6) == 0) {
-        server_log(sockfd, buff, 0);
         ping_handler(sockfd);
     } else if (strncmp(buff, "PONG\r\n", 6) == 0) {
-        server_log(sockfd, buff, 0);
         pong_handler(sockfd);
     } else if (strncmp(buff, "OKAY\r\n", 6) == 0) {
-        server_log(sockfd, buff, 0);
         okay_handler(sockfd);
     } else if (strncmp(buff, "SOLN ", 5) == 0) {
-        server_log(sockfd, buff, 0);
         soln_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "WORK ", 5) == 0) {
-        server_log(sockfd, buff, 0);
         work_handler(sockfd, buff + 5);
     } else if (strncmp(buff, "ABRT\r\n", 6) == 0) {
-        server_log(sockfd, buff, 0);
         dequeue_client(sockfd);
         write_msg(sockfd, "OKAY", 4);
     }else {
@@ -430,6 +430,7 @@ void write_msg(int sockfd, char *str, int strlen)
 void server_log(int sockfd, char *exchange, int is_server)
 {
     char msg[1024];
+    bzero(msg, 1024);
     time_t now = time(0);
     char time[20];
     strftime(time, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
@@ -446,7 +447,14 @@ void server_log(int sockfd, char *exchange, int is_server)
     }
 
     // generate/write message
-    sprintf((char *)&msg, "[%s] %02d %-16s %s\n", time, sockfd, ip, exchange);
+    int len = strnlen(exchange, 1024);
+    if(len > 0) {
+        if (exchange[len - 1] == '\n')
+            sprintf((char *) &msg, "[%s] %02d %-16s %s", time, sockfd, ip, exchange);
+        else
+            sprintf((char *) &msg, "[%s] %02d %-16s %s\n", time, sockfd, ip, exchange);
+    }
+
     fprintf(stdout, "%s", msg);
     fprintf(log_file, "%s", msg);
     fflush(log_file); // force write to file
