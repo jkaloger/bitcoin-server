@@ -13,13 +13,6 @@
 
 #define MAX_CLIENTS 100
 
-/* workaround because verify is giving problems... */
-void segvhandler(int n)
-{
-    pthread_exit(NULL);
-}
-
-
 int
 main(int argc, char **argv)
 {
